@@ -1,4 +1,4 @@
-"""Reuters Brazil news scraper (best-effort, may be blocked)."""
+"""Reuters/Google News Brazil scraper with Jina fallback."""
 import re
 import xml.etree.ElementTree as ET
 from crawlers.base import BaseCrawler
@@ -9,21 +9,32 @@ class ReutersCrawler(BaseCrawler):
     url = 'https://www.reuters.com/news/archive/brasilNews'
 
     def fetch(self):
-        # Try RSS feeds first
-        rss_urls = [
-            'https://www.reuters.com/rssFeed/businessNews',
-            'https://news.google.com/rss/search?q=brasil+finanças+mercado&hl=pt-BR&gl=BR&ceid=BR:pt-419',
-        ]
-        for rss_url in rss_urls:
-            raw = self._fetch_url(rss_url)
-            if raw and '<item' in raw:
-                return self._parse_rss(raw)
+        # Try Google News RSS first (more reliable than direct Reuters)
+        gn_url = 'https://news.google.com/rss/search?q=brasil+finan%C3%A7as+mercado&hl=pt-BR&gl=BR&ceid=BR:pt-419'
+        raw = self._fetch_url(gn_url)
+        if raw and '<item' in raw:
+            articles = self._parse_rss(raw)
+            if articles:
+                return articles
 
-        # Fallback: basic HTML
-        raw = self._fetch_url(self.url)
-        if not raw:
-            return []
-        return self.parse(raw)
+        # Try Reuters RSS
+        raw = self._fetch_url('https://www.reuters.com/rssFeed/businessNews')
+        if raw and '<item' in raw:
+            articles = self._parse_rss(raw)
+            if articles:
+                return articles
+
+        # Fallback: Jina Reader on Reuters Brazil
+        raw = self._fetch_via_jina(self.url)
+        if raw:
+            return self._parse_jina_text(raw)
+
+        # Last resort: Jina on Google News Brazil finance
+        raw = self._fetch_via_jina('https://news.google.com/search?q=brasil%20finan%C3%A7as%20mercado&hl=pt-BR&gl=BR')
+        if raw:
+            return self._parse_jina_text(raw)
+
+        return []
 
     def _parse_rss(self, raw):
         articles = []
@@ -61,8 +72,28 @@ class ReutersCrawler(BaseCrawler):
             })
         return articles
 
+    def _parse_jina_text(self, text):
+        """Parse Jina Reader markdown output for news items."""
+        articles = []
+        # Match markdown links
+        for match in re.finditer(r'\[([^\]]{15,})\]\((https?://[^\)]+)\)', text):
+            title = match.group(1).strip()
+            url = match.group(2)
+            # Filter out navigation/non-news links
+            if any(x in title.lower() for x in ['cookie', 'sign in', 'log in', 'menu', 'navigation']):
+                continue
+            articles.append({
+                'source': self.name,
+                'url': url,
+                'title': title[:200],
+                'summary': None,
+                'content': None,
+                'published_at': None,
+            })
+
+        return articles[:20]
+
     def parse(self, raw):
-        # Very basic HTML fallback
         articles = []
         pattern = r'<a[^>]+href="(/business/[^"]+)"[^>]*>([^<]+)</a>'
         for match in re.finditer(pattern, raw):

@@ -13,6 +13,16 @@ SUPABASE_SERVICE_KEY = _cfg.get('SUPABASE_DASHBOARD_SERVICE_ROLE_KEY',
     os.environ.get('SUPABASE_SERVICE_ROLE_KEY', ''))
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY',
     _cfg.get('GOOGLE_AI_API_KEY', _cfg.get('GOOGLE_API_KEY', '')))
+JINA_API_KEY = os.environ.get('JINA_API_KEY',
+    _cfg.get('JINA_API_KEY', 'jina_ec949e78573343a791cd0d6303f0bfa5JWZr4a0lzfoQQBiUdP-g-rQG7VOW'))
+
+# Antigravity (Opus) for sentiment — free via subscription
+ANTIGRAVITY_API_KEY = os.environ.get('ANTIGRAVITY_API_KEY',
+    _cfg.get('ANTIGRAVITY_API_KEY', ''))
+ANTIGRAVITY_BASE_URL = os.environ.get('ANTIGRAVITY_BASE_URL',
+    _cfg.get('ANTIGRAVITY_BASE_URL', ''))
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY',
+    _cfg.get('OPENAI_API_KEY', ''))
 
 SOURCES = {
     'infomoney': 'https://www.infomoney.com.br/feed/',
