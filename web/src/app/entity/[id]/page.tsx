@@ -1,7 +1,4 @@
 import { supabaseQuery } from '@/lib/supabase';
-import { SentimentBar } from '@/components/SentimentIndicator';
-import { ArticleCard } from '@/components/ArticleCard';
-import { EntityBadge } from '@/components/EntityBadge';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,8 +10,53 @@ async function getEntity(id: string) {
 async function getLinkedArticles(entityId: string) {
   return supabaseQuery(
     'cronos_article_entities',
-    `entity_id=eq.${entityId}&select=relevance,context,cronos_articles(id,title,source,url,summary,published_at,cronos_sentiment(score,label))&limit=30`
+    `entity_id=eq.${entityId}&select=relevance,context,cronos_articles(id,title,source,url,summary,published_at,cronos_sentiment(score,label))&order=cronos_articles(published_at).desc&limit=30`
   );
+}
+
+async function getPrices(ticker: string) {
+  return supabaseQuery('cronos_prices', `ticker=eq.${ticker}&select=date,close,volume&order=date.desc&limit=30`);
+}
+
+async function getImpacts(ticker: string) {
+  return supabaseQuery('cronos_impacts', `ticker=eq.${ticker}&select=*,cronos_articles(title,source,published_at)&order=impact_score.desc&limit=20`);
+}
+
+function SentimentDot({ score }: { score: number }) {
+  const hue = score > 0.05 ? 155 : score < -0.05 ? 0 : 45;
+  const sat = Math.min(Math.abs(score) * 800, 80);
+  return (
+    <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: `hsl(${hue} ${sat}% 50%)`, flexShrink: 0 }} />
+  );
+}
+
+function Sparkline({ data, width = 200, height = 48 }: { data: { date: string; close: number }[]; width?: number; height?: number }) {
+  if (data.length < 2) return null;
+  const sorted = [...data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const closes = sorted.map(d => d.close);
+  const min = Math.min(...closes);
+  const max = Math.max(...closes);
+  const range = max - min || 1;
+  const padX = 2; const padY = 4;
+  const iW = width - padX * 2; const iH = height - padY * 2;
+  const pts = closes.map((v, i) => `${(padX + (i / (closes.length - 1)) * iW).toFixed(1)},${(padY + iH - ((v - min) / range) * iH).toFixed(1)}`).join(' ');
+  const delta = ((closes[closes.length - 1] - closes[0]) / closes[0]) * 100;
+  const color = delta >= 0 ? 'var(--signal-up)' : 'var(--signal-down)';
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible' }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function formatTime(iso: string | null) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const now = new Date();
+  const diffH = Math.floor((now.getTime() - d.getTime()) / 3600000);
+  if (diffH < 1) return 'agora';
+  if (diffH < 24) return `${diffH}h`;
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
 export default async function EntityPage({ params }: { params: Promise<{ id: string }> }) {
@@ -23,84 +65,207 @@ export default async function EntityPage({ params }: { params: Promise<{ id: str
 
   if (!entity) {
     return (
-      <div className="text-center py-20">
-        <p className="text-4xl mb-3">◈</p>
-        <p className="text-gray-500">Entidade não encontrada</p>
-        <a href="/" className="text-cyan-600 text-sm hover:text-cyan-400 mt-2 block">← Voltar ao Feed</a>
+      <div style={{ textAlign: 'center', padding: '100px 0', color: 'var(--text-muted)' }}>
+        <div style={{ fontFamily: 'var(--font-serif)', fontSize: '3rem', marginBottom: '12px' }}>∅</div>
+        <div style={{ fontSize: '0.875rem' }}>Entidade não encontrada</div>
+        <a href="/" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--accent)', marginTop: '12px', display: 'inline-block' }}>← Feed</a>
       </div>
     );
   }
 
-  const links = await getLinkedArticles(id);
-  const articles = links.map((l: any) => ({
-    ...l.cronos_articles,
-    relevance: l.relevance,
-    context: l.context,
-  })).filter((a: any) => a?.title);
+  const [links, prices, impacts] = await Promise.all([
+    getLinkedArticles(id),
+    entity.type === 'ticker' ? getPrices(entity.value) : Promise.resolve([]),
+    entity.type === 'ticker' ? getImpacts(entity.value) : Promise.resolve([]),
+  ]);
 
-  // Calculate aggregated sentiment
-  const sentiments = articles
-    .map((a: any) => a.cronos_sentiment?.[0]?.score)
-    .filter((s: any) => s !== undefined && s !== null);
-  const avgSentiment = sentiments.length > 0
-    ? sentiments.reduce((a: number, b: number) => a + b, 0) / sentiments.length
-    : 0;
+  const articles = links
+    .map((l: any) => ({ ...l.cronos_articles, relevance: l.relevance, context: l.context }))
+    .filter((a: any) => a?.title);
+
+  const sentiments = articles.map((a: any) => a.cronos_sentiment?.[0]?.score).filter((s: any) => s != null);
+  const avgSentiment = sentiments.length > 0 ? sentiments.reduce((a: number, b: number) => a + b, 0) / sentiments.length : 0;
+
+  const typeColors: Record<string, string> = {
+    ticker: 'hsl(190 70% 50%)', company: 'hsl(270 50% 55%)', cnpj: 'hsl(35 75% 50%)', sector: 'hsl(150 60% 45%)',
+  };
+  const accentColor = typeColors[entity.type] || 'var(--text-tertiary)';
+
+  const latestPrice = prices.length > 0 ? prices[0].close : null;
+  const prevPrice = prices.length > 1 ? prices[1].close : null;
+  const priceDelta = latestPrice && prevPrice ? ((latestPrice - prevPrice) / prevPrice) * 100 : null;
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <a href="/" className="text-xs text-gray-600 hover:text-cyan-600 transition-colors mb-4 block">← Feed</a>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '36px', maxWidth: '1000px', margin: '0 auto' }}>
 
-      {/* Entity header */}
-      <div className="border border-gray-800/60 rounded-lg p-5 bg-[#0d0d14] mb-6">
-        <div className="flex items-start justify-between">
+      {/* Breadcrumb */}
+      <a href="/" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>← Intelligence Feed</a>
+
+      {/* ━━ ENTITY HEADER ━━ */}
+      <section className="stagger" style={{ padding: '24px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderLeft: `3px solid ${accentColor}`, borderRadius: 'var(--radius)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', flexWrap: 'wrap', gap: '16px' }}>
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <EntityBadge type={entity.type} value={entity.value} />
-              {entity.canonical_name && (
-                <h1 className="text-lg font-bold text-gray-200">{entity.canonical_name}</h1>
-              )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: accentColor, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '1px 6px', border: `1px solid ${accentColor}33`, borderRadius: 'var(--radius-sm)' }}>
+                {entity.type}
+              </span>
+              <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                {entity.value}
+              </h1>
             </div>
+            {entity.canonical_name && (
+              <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>{entity.canonical_name}</div>
+            )}
             {entity.sector && (
-              <p className="text-xs text-gray-500">Setor: {entity.sector}</p>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)' }}>Setor: {entity.sector}</div>
             )}
           </div>
-          <div className="text-right">
-            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-1">Sentimento</p>
-            <p className={`text-xl font-mono font-bold ${avgSentiment > 0.05 ? 'text-emerald-400' : avgSentiment < -0.05 ? 'text-red-400' : 'text-yellow-400'}`}>
-              {avgSentiment > 0 ? '+' : ''}{avgSentiment.toFixed(3)}
-            </p>
+
+          <div style={{ display: 'flex', gap: '24px', alignItems: 'start' }}>
+            {/* Sentiment */}
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '4px' }}>Sentimento</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.5rem', color: avgSentiment > 0.05 ? 'var(--signal-up)' : avgSentiment < -0.05 ? 'var(--signal-down)' : 'var(--signal-neutral)', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+                {avgSentiment > 0 ? '+' : ''}{avgSentiment.toFixed(3)}
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                {articles.length} menções · {sentiments.length} scored
+              </div>
+            </div>
+
+            {/* Price (if ticker) */}
+            {latestPrice != null && (
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '4px' }}>Preço</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.5rem', color: 'var(--text-primary)', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+                  R${latestPrice.toFixed(2)}
+                </div>
+                {priceDelta != null && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: priceDelta > 0 ? 'var(--signal-up)' : priceDelta < 0 ? 'var(--signal-down)' : 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums', marginTop: '2px' }}>
+                    {priceDelta > 0 ? '+' : ''}{priceDelta.toFixed(2)}%
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
-        <div className="mt-3">
-          <SentimentBar score={avgSentiment} />
-        </div>
-        <p className="text-[10px] text-gray-600 mt-2">{articles.length} menções · {sentiments.length} com sentimento</p>
-      </div>
 
-      {/* Articles */}
-      <h2 className="text-sm text-gray-400 mb-3">Notícias relacionadas</h2>
-      <div className="space-y-3">
-        {articles.map((article: any) => {
-          const sentiment = article.cronos_sentiment?.[0] || null;
-          return (
-            <ArticleCard
-              key={article.id}
-              title={article.title}
-              source={article.source}
-              url={article.url}
-              summary={article.summary}
-              published_at={article.published_at}
-              sentiment={sentiment}
-            />
-          );
-        })}
-      </div>
+        {/* Sparkline */}
+        {prices.length >= 2 && (
+          <div style={{ marginTop: '16px', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
+            <Sparkline data={prices} width={600} height={56} />
+          </div>
+        )}
+      </section>
 
-      {articles.length === 0 && (
-        <div className="text-center py-12 text-gray-600">
-          <p>Nenhuma notícia vinculada a esta entidade ainda.</p>
-        </div>
-      )}
+      {/* ━━ TWO-COLUMN ━━ */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr clamp(240px, 22vw, 340px)', gap: '36px', alignItems: 'start' }}>
+
+        {/* ── ARTICLES ── */}
+        <section>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', marginBottom: '16px' }}>
+            <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.25rem', fontWeight: 400, color: 'var(--text-primary)' }}>Notícias</h2>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)' }}>{articles.length} artigos</span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            {articles.map((a: any) => {
+              const score = a.cronos_sentiment?.[0]?.score ?? 0;
+              return (
+                <a
+                  key={a.id}
+                  href={a.url}
+                  target="_blank"
+                  rel="noopener"
+                  className="interactive stagger"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '8px 1fr auto',
+                    gap: '12px',
+                    alignItems: 'start',
+                    padding: '12px 14px',
+                    borderBottom: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <div style={{ paddingTop: '5px' }}><SentimentDot score={score} /></div>
+                  <div>
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--text-primary)', lineHeight: 1.45, marginBottom: '3px' }}>{a.title}</div>
+                    {a.summary && (
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--text-tertiary)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{a.summary}</div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0, paddingTop: '2px' }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{a.source}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)', marginTop: '2px' }}>{formatTime(a.published_at)}</div>
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+
+          {articles.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: '2rem', marginBottom: '8px' }}>∅</div>
+              <div style={{ fontSize: '0.8125rem' }}>Nenhuma notícia vinculada a esta entidade.</div>
+            </div>
+          )}
+        </section>
+
+        {/* ── SIDEBAR: Impacts + Actions ── */}
+        <aside style={{ display: 'flex', flexDirection: 'column', gap: '28px', position: 'sticky', top: '68px' }}>
+
+          {/* Impact History */}
+          {impacts.length > 0 && (
+            <div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '12px' }}>
+                Histórico de Impacto
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {impacts.slice(0, 8).map((imp: any, i: number) => (
+                  <div key={i} style={{ padding: '8px 10px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                        {(imp.impact_score || 0).toFixed(3)}
+                      </span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: (imp.delta_1d || 0) > 0 ? 'var(--signal-up)' : (imp.delta_1d || 0) < 0 ? 'var(--signal-down)' : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                        {imp.delta_1d != null ? `${imp.delta_1d > 0 ? '+' : ''}${imp.delta_1d.toFixed(2)}%` : '—'}
+                      </span>
+                    </div>
+                    {imp.cronos_articles?.title && (
+                      <div style={{ fontSize: '0.5625rem', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {imp.cronos_articles.title}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '12px' }}>
+              Ações
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <a href={`/simulate`} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border-subtle)', transition: 'all 150ms' }} className="interactive">
+                <span style={{ fontSize: '0.875rem' }}>◇</span>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>Simular cenário</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)' }}>MiroFish Swarm</div>
+                </div>
+              </a>
+              <a href={`/impact`} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border-subtle)', transition: 'all 150ms' }} className="interactive">
+                <span style={{ fontSize: '0.875rem' }}>◈</span>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>Ver correlações</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)' }}>Impact Analysis</div>
+                </div>
+              </a>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

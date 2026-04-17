@@ -186,59 +186,72 @@ def run_impact_scoring(limit=100):
     """Score impact for all unscored article-entity pairs."""
     print('[IMPACT] Finding unscored article-ticker pairs...')
     
-    # Get articles with linked ticker entities that don't have impact scores yet
-    articles_with_entities = _query(
-        'cronos_article_entities',
-        f'select=article_id,entity_id,cronos_entities(type,value),cronos_articles(title,source,published_at),cronos_sentiment(score)'
-        f'&cronos_entities.type=eq.ticker&limit={limit}'
+    # Get ticker entities
+    ticker_entities = _query(
+        'cronos_entities',
+        'type=eq.ticker&select=id,value&limit=100'
     )
     
     stats = {'scored': 0, 'skipped': 0, 'errors': 0}
     
-    for ae in articles_with_entities:
-        entity = ae.get('cronos_entities')
-        article = ae.get('cronos_articles')
-        if not entity or not article:
-            stats['skipped'] += 1
-            continue
+    for entity in ticker_entities:
+        ticker = entity['value']
+        entity_id = entity['id']
         
-        ticker = entity.get('value')
-        if not ticker:
-            stats['skipped'] += 1
-            continue
-        
-        # Get sentiment if available
-        sentiment = ae.get('cronos_sentiment')
-        sent_score = sentiment[0]['score'] if sentiment and len(sentiment) > 0 else 0
-        
-        # Check if already scored
-        existing = _query(
-            'cronos_impacts',
-            f'article_id=eq.{ae["article_id"]}&ticker=eq.{ticker}&select=id&limit=1'
+        # Get article links for this entity
+        links = _query(
+            'cronos_article_entities',
+            f'entity_id=eq.{entity_id}&select=article_id&limit={limit}'
         )
-        if existing:
-            stats['skipped'] += 1
-            continue
         
-        try:
-            impact = compute_impact(article, ticker, sent_score)
-            if impact:
-                record = {
-                    'article_id': ae['article_id'],
-                    'entity_id': ae['entity_id'],
-                    **impact,
-                }
-                status = _upsert('cronos_impacts', record)
-                if status and status < 300:
-                    stats['scored'] += 1
-                    print(f'  {ticker} | Δ1d={impact["delta_1d"]}% | score={impact["impact_score"]} | vol_anom={impact["volume_anomaly"]}')
-                else:
-                    stats['errors'] += 1
-            else:
+        for link in links:
+            article_id = link['article_id']
+            
+            # Check if already scored
+            existing = _query(
+                'cronos_impacts',
+                f'article_id=eq.{article_id}&ticker=eq.{ticker}&select=id&limit=1'
+            )
+            if existing:
                 stats['skipped'] += 1
-        except Exception as e:
-            print(f'  [ERROR] {ticker}: {e}')
-            stats['errors'] += 1
+                continue
+            
+            # Get article data
+            articles = _query(
+                'cronos_articles',
+                f'id=eq.{article_id}&select=title,source,published_at,summary&limit=1'
+            )
+            if not articles:
+                stats['skipped'] += 1
+                continue
+            article = articles[0]
+            
+            # Get sentiment
+            sentiments = _query(
+                'cronos_sentiment',
+                f'article_id=eq.{article_id}&select=score&limit=1'
+            )
+            sent_score = sentiments[0]['score'] if sentiments else 0
+            
+            try:
+                impact = compute_impact(article, ticker, sent_score)
+                if impact:
+                    record = {
+                        'article_id': article_id,
+                        'entity_id': entity_id,
+                        **impact,
+                    }
+                    status = _upsert('cronos_impacts', record)
+                    if status and status < 300:
+                        stats['scored'] += 1
+                        print(f'  {ticker} | Δ1d={impact["delta_1d"]}% | score={impact["impact_score"]} | vol_anom={impact["volume_anomaly"]}')
+                    else:
+                        stats['errors'] += 1
+                else:
+                    stats['skipped'] += 1
+            except Exception as e:
+                print(f'  [ERROR] {ticker}: {e}')
+                stats['errors'] += 1
     
     print(f'\n{"=" * 40}')
     print(f'Impact Scoring Complete!')

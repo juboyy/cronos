@@ -13,6 +13,9 @@ from crawlers.valor import ValorCrawler
 from crawlers.b3_news import B3Crawler
 from crawlers.bcb import BCBCrawler
 from crawlers.reuters_br import ReutersCrawler
+from crawlers.estadao import EstadaoCrawler
+from crawlers.folha import FolhaCrawler
+from crawlers.exame import ExameCrawler
 
 
 ALL_CRAWLERS = {
@@ -21,6 +24,9 @@ ALL_CRAWLERS = {
     'b3': B3Crawler,
     'bcb': BCBCrawler,
     'reuters': ReutersCrawler,
+    'estadao': EstadaoCrawler,
+    'folha': FolhaCrawler,
+    'exame': ExameCrawler,
 }
 
 

@@ -4,12 +4,34 @@ import { NextRequest, NextResponse } from 'next/server';
 // Enhanced search: lexical (FTS) + entity graph navigation
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q') || '';
+  const type = req.nextUrl.searchParams.get('type'); // 'entities', 'impacts' — direct mode
   const mode = req.nextUrl.searchParams.get('mode') || 'hybrid'; // fts, entity, hybrid
   const ticker = req.nextUrl.searchParams.get('ticker');
   const limit = req.nextUrl.searchParams.get('limit') || '20';
 
   if (!q && !ticker) {
     return NextResponse.json({ error: 'q or ticker required' }, { status: 400 });
+  }
+
+  // Direct type queries for the enhanced search UI
+  if (type === 'entities' && q) {
+    const entRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/cronos_entities?select=id,type,value,canonical_name,sector` +
+      `&or=(value.ilike.*${encodeURIComponent(q)}*,canonical_name.ilike.*${encodeURIComponent(q)}*)` +
+      `&limit=${limit}`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } },
+    );
+    return NextResponse.json(entRes.ok ? await entRes.json() : []);
+  }
+
+  if (type === 'impacts' && q) {
+    const impRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/cronos_impacts?select=ticker,impact_score,delta_1d,delta_5d,volume_anomaly` +
+      `&ticker=ilike.*${encodeURIComponent(q)}*` +
+      `&order=impact_score.desc&limit=${limit}`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } },
+    );
+    return NextResponse.json(impRes.ok ? await impRes.json() : []);
   }
 
   const results: any = { query: q, mode, articles: [], entities: [], related: [] };

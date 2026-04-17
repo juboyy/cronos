@@ -3,8 +3,8 @@ import { NavBar } from '@/components/NavBar';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Cronos — Financial Intelligence',
-  description: 'Brazilian financial intelligence engine: real-time news, impact analysis, predictive simulation',
+  title: 'Cronos 2.0 — Financial Intelligence Engine',
+  description: 'Brazilian financial intelligence: real-time news, measurable impact, predictive simulation, deep search',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

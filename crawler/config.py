@@ -30,6 +30,9 @@ SOURCES = {
     'b3': 'https://www.b3.com.br/pt_br/noticias/',
     'bcb': 'https://www.bcb.gov.br/api/servico/sitebcb/agenciabcb?quantidade=10',
     'reuters': 'https://www.reuters.com/news/archive/brasilNews',
+    'estadao': 'https://www.estadao.com.br/arc/outboundfeeds/rss/?outputType=xml',
+    'folha': 'https://feeds.folha.uol.com.br/mercado/rss091.xml',
+    'exame': 'https://exame.com/feed/',
 }
 
 REQUEST_TIMEOUT = 10

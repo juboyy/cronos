@@ -2,10 +2,12 @@
 
 const NAV = [
   { href: '/', label: 'Intelligence' },
+  { href: '/briefing', label: 'Briefing' },
   { href: '/impact', label: 'Impact' },
   { href: '/simulate', label: 'Simulate' },
   { href: '/patterns', label: 'Patterns' },
   { href: '/alerts', label: 'Alerts' },
+  { href: '/search', label: 'Search' },
 ];
 
 export function NavBar() {

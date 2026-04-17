@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { scenario, tickers, context, agent_count, max_rounds, market_data } = body;
+    const { scenario, tickers, context, market_data, preset, config } = body;
 
     if (!scenario) {
       return NextResponse.json({ error: 'scenario required' }, { status: 400 });
@@ -17,9 +17,9 @@ export async function POST(req: NextRequest) {
         scenario,
         tickers: tickers || [],
         context: context || '',
-        agent_count: agent_count || 12,
-        max_rounds: max_rounds || 8,
         market_data: market_data || '',
+        preset: preset || 'standard',
+        config: config || {},
       }),
     });
 
@@ -30,10 +30,16 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET: get simulation by id or list all
+// GET: get simulation by id, list all, or get presets
 export async function GET(req: NextRequest) {
   try {
     const id = req.nextUrl.searchParams.get('id');
+    const presets = req.nextUrl.searchParams.get('presets');
+
+    if (presets === 'true') {
+      const result = await engineRequest('/api/presets');
+      return NextResponse.json(result);
+    }
 
     if (id) {
       const result = await engineRequest(`/api/simulate/${id}`);
