@@ -1,0 +1,142 @@
+# Cronos Intelligence Skill
+# Inject this into any Paganini agent to give them financial intelligence capabilities.
+
+name: cronos
+description: "Financial intelligence engine — news, sentiment, impact analysis, and market simulation"
+version: "1.0.0"
+author: "Paganini One"
+
+triggers:
+  - "mercado"
+  - "notícias financeiras"
+  - "sentimento"
+  - "impacto"
+  - "simulação"
+  - "briefing"
+  - "preço"
+  - "ação"
+  - "bolsa"
+  - "ticker"
+  - "alerta financeiro"
+
+capabilities:
+  - name: morning_briefing
+    description: "Generate a comprehensive morning market briefing"
+    endpoint: "/api/cronos/briefing"
+    method: GET
+    params:
+      - name: ticker
+        type: string
+        optional: true
+        description: "Specific ticker to focus on (e.g., PETR4)"
+
+  - name: search_news
+    description: "Search financial news articles"
+    endpoint: "/api/search"
+    method: GET
+    params:
+      - name: q
+        type: string
+        required: true
+        description: "Search query"
+
+  - name: get_feed
+    description: "Get latest financial news feed with sentiment"
+    endpoint: "/api/feed"
+    method: GET
+    params:
+      - name: limit
+        type: integer
+        default: 20
+
+  - name: get_impact
+    description: "Get impact analysis (news → price correlation)"
+    endpoint: "/api/cronos/impact"
+    method: GET
+    params:
+      - name: ticker
+        type: string
+        optional: true
+      - name: min_score
+        type: number
+        default: 0
+
+  - name: get_prices
+    description: "Get price history for a ticker or macro indicator"
+    endpoint: "/api/cronos/prices"
+    method: GET
+    params:
+      - name: ticker
+        type: string
+        description: "B3 ticker (e.g., PETR4)"
+      - name: indicator
+        type: string
+        description: "Macro indicator (selic, ipca, usdbrl, cdi)"
+      - name: days
+        type: integer
+        default: 30
+
+  - name: run_simulation
+    description: "Run a predictive market simulation (MiroFish swarm)"
+    endpoint: "/api/cronos/simulate"
+    method: POST
+    params:
+      - name: scenario
+        type: string
+        required: true
+        description: "Natural language scenario description"
+      - name: tickers
+        type: array
+        optional: true
+        description: "Relevant tickers"
+      - name: config
+        type: object
+        optional: true
+
+  - name: get_patterns
+    description: "Get historical price reaction patterns"
+    endpoint: "/api/cronos/patterns"
+    method: GET
+    params:
+      - name: ticker
+        type: string
+        optional: true
+      - name: type
+        type: string
+        optional: true
+        description: "Pattern type: dividend, earnings, acquisition, regulatory, macro"
+
+  - name: manage_alerts
+    description: "Create or list financial alerts"
+    endpoint: "/api/cronos/alerts"
+    method: GET|POST
+
+  - name: get_entity
+    description: "Get entity details (company, ticker, sector)"
+    endpoint: "/api/entity/{id}"
+    method: GET
+
+instructions: |
+  You have access to the Cronos Financial Intelligence Engine.
+  
+  **When the user asks about markets, stocks, or financial news:**
+  1. Start with `morning_briefing` for a market overview
+  2. Use `search_news` for specific topics
+  3. Use `get_impact` to see how news affected prices
+  4. Use `get_patterns` to find recurring correlations
+  
+  **When the user wants predictions:**
+  1. Use `run_simulation` with a clear scenario
+  2. Include relevant tickers for focused analysis
+  
+  **When the user wants monitoring:**
+  1. Use `manage_alerts` to create automated watchers
+  
+  **Format rules:**
+  - Always show sentiment with emoji: 🟢 positive, 🔴 negative, 🟡 neutral
+  - Show price changes with arrows: ↑ up, ↓ down, → flat
+  - Include confidence levels when available
+  - Cite sources when referencing specific news
+  
+  **Base URL:** Use the CRONOS_API_URL environment variable, 
+  defaulting to https://web-revenue-os.vercel.app

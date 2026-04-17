@@ -1,9 +1,8 @@
-"""Pipeline: crawl → extract entities → sentiment → insert into Supabase."""
+"""Enhanced pipeline: crawl → NLP → sentiment → impact → patterns → alerts."""
 import time
 import sys
 import os
 
-# Add parent dir to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from db import check_article_exists, insert_article, insert_entity, get_entity_id, link_article_entity, insert_sentiment
@@ -25,13 +24,13 @@ ALL_CRAWLERS = {
 }
 
 
-def run_pipeline(sources=None, dry_run=False):
-    """Run full crawl → NLP → DB pipeline."""
+def run_pipeline(sources=None, dry_run=False, run_impact=False, run_patterns=False, run_alerts=False):
+    """Run full crawl → NLP → DB pipeline with optional post-processing."""
     if sources is None:
         sources = list(ALL_CRAWLERS.keys())
 
     stats = {'crawled': 0, 'new': 0, 'entities': 0, 'sentiment': 0, 'errors': 0}
-    MAX_NEW_PER_SOURCE = 20  # Cap to avoid API rate limits on sentiment
+    MAX_NEW_PER_SOURCE = 20
 
     for source_name in sources:
         crawler_cls = ALL_CRAWLERS.get(source_name)
@@ -57,7 +56,6 @@ def run_pipeline(sources=None, dry_run=False):
             if new_this_source >= MAX_NEW_PER_SOURCE:
                 break
             try:
-                # Dedup check
                 if not dry_run and check_article_exists(article['url']):
                     continue
 
@@ -68,13 +66,11 @@ def run_pipeline(sources=None, dry_run=False):
                     print(f'  [DRY] {article["title"][:80]}')
                     continue
 
-                # Insert article
                 article_id = insert_article(article)
                 if not article_id:
                     stats['errors'] += 1
                     continue
 
-                # Extract entities
                 entities = extract_entities(
                     article['title'],
                     article.get('summary'),
@@ -82,7 +78,6 @@ def run_pipeline(sources=None, dry_run=False):
                 )
 
                 for ent in entities:
-                    # Insert or get entity
                     entity_data = {
                         'type': ent['type'],
                         'value': ent['value'],
@@ -104,7 +99,6 @@ def run_pipeline(sources=None, dry_run=False):
                         )
                         stats['entities'] += 1
 
-                # Sentiment analysis (rate limited)
                 sentiment = analyze_sentiment(article['title'], article.get('summary'))
                 if sentiment:
                     insert_sentiment(
@@ -114,19 +108,44 @@ def run_pipeline(sources=None, dry_run=False):
                         confidence=sentiment['confidence'],
                     )
                     stats['sentiment'] += 1
-                    time.sleep(0.5)  # Rate limit Gemini
+                    time.sleep(0.5)
 
             except Exception as e:
                 print(f'  [ERROR] Processing article: {e}')
                 stats['errors'] += 1
                 continue
 
-    print(f'\n{"="*50}')
+    print(f'\n{"=" * 50}')
     print(f'Pipeline complete!')
     print(f'  Crawled: {stats["crawled"]} articles')
     print(f'  New:     {stats["new"]}')
     print(f'  Entities: {stats["entities"]} links')
     print(f'  Sentiment: {stats["sentiment"]} analyzed')
     print(f'  Errors:  {stats["errors"]}')
+
+    # Post-processing
+    if run_impact:
+        print(f'\n--- Impact Scoring ---')
+        try:
+            from nlp.impact_scorer import run_impact_scoring
+            run_impact_scoring(limit=100)
+        except Exception as e:
+            print(f'  [ERROR] Impact scoring: {e}')
+
+    if run_patterns:
+        print(f'\n--- Pattern Matching ---')
+        try:
+            from nlp.pattern_matcher import run_pattern_matching
+            run_pattern_matching(min_occurrences=2)
+        except Exception as e:
+            print(f'  [ERROR] Pattern matching: {e}')
+
+    if run_alerts:
+        print(f'\n--- Alert Engine ---')
+        try:
+            from alert_engine import run_alert_engine
+            run_alert_engine()
+        except Exception as e:
+            print(f'  [ERROR] Alert engine: {e}')
 
     return stats
