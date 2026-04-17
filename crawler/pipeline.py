@@ -16,6 +16,9 @@ from crawlers.reuters_br import ReutersCrawler
 from crawlers.estadao import EstadaoCrawler
 from crawlers.folha import FolhaCrawler
 from crawlers.exame import ExameCrawler
+from crawlers.moneytimes import MoneyTimesCrawler
+from crawlers.investing_br import InvestingBRCrawler
+from crawlers.seudinheiro import SeuDinheiroCrawler
 
 
 ALL_CRAWLERS = {
@@ -27,6 +30,9 @@ ALL_CRAWLERS = {
     'estadao': EstadaoCrawler,
     'folha': FolhaCrawler,
     'exame': ExameCrawler,
+    'moneytimes': MoneyTimesCrawler,
+    'investing_br': InvestingBRCrawler,
+    'seudinheiro': SeuDinheiroCrawler,
 }
 
 
@@ -36,7 +42,7 @@ def run_pipeline(sources=None, dry_run=False, run_impact=False, run_patterns=Fal
         sources = list(ALL_CRAWLERS.keys())
 
     stats = {'crawled': 0, 'new': 0, 'entities': 0, 'sentiment': 0, 'errors': 0}
-    MAX_NEW_PER_SOURCE = 20
+    MAX_NEW_PER_SOURCE = 50
 
     for source_name in sources:
         crawler_cls = ALL_CRAWLERS.get(source_name)

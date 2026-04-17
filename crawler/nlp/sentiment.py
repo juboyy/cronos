@@ -1,5 +1,6 @@
-"""Sentiment analysis via Gemini Flash (free, reliable)."""
+"""Sentiment analysis: Gemini Flash primary, keyword fallback on 429."""
 import json
+import time
 import urllib.request
 import urllib.error
 from config import GEMINI_API_KEY
@@ -14,6 +15,47 @@ SENTIMENT_PROMPT = (
     '"confidence" (float 0.0 to 1.0). '
     'Headline: {text}'
 )
+
+# Rate limiting state
+_last_call = 0
+_min_interval = 1.5  # seconds between Gemini calls
+_consecutive_429s = 0
+
+# Portuguese keyword lexicon for fast fallback
+_POSITIVE = {
+    'alta','altas','sobe','subiu','subiram','avança','cresce','crescimento','lucro','lucros',
+    'recorde','supera','superam','otimismo','otimista','positivo','positiva','valoriza',
+    'valorização','recupera','recuperação','ganho','ganhos','dividendo','dividendos',
+    'forte','aquecido','aceleração','melhora','aprovação','expansão','investimento',
+    'captação','ipo','aquisição','compra','upgrade','recomendação','outperform','buy',
+}
+_NEGATIVE = {
+    'queda','cai','caiu','caíram','recua','tombo','perde','perda','perdas','prejuízo',
+    'prejuízos','baixa','desvaloriza','desvalorização','pessimismo','pessimista','negativo',
+    'negativa','risco','riscos','crise','inflação','recessão','desemprego','dívida',
+    'multa','fraude','investigação','calote','default','downgrade','sell','corte',
+    'demissão','demissões','falência','condenação','embargo','sanção','queda','dólar sobe',
+    'selic alta','juros altos','estouro','colapso','fuga',
+}
+
+
+def _keyword_sentiment(title, summary=None):
+    """Fast keyword-based sentiment (no API call)."""
+    text = (title + ' ' + (summary or '')).lower()
+    words = set(text.split())
+
+    pos = len(words & _POSITIVE)
+    neg = len(words & _NEGATIVE)
+    total = pos + neg
+
+    if total == 0:
+        return {'score': 0.0, 'label': 'neutral', 'confidence': 0.3, 'model': 'keyword'}
+
+    score = (pos - neg) / total
+    label = 'positive' if score > 0.1 else ('negative' if score < -0.1 else 'neutral')
+    confidence = min(0.6, 0.3 + (total * 0.1))
+
+    return {'score': round(score, 4), 'label': label, 'confidence': round(confidence, 3), 'model': 'keyword'}
 
 
 def _parse_result(text_resp):
@@ -35,10 +77,17 @@ def _parse_result(text_resp):
 
 
 def analyze_sentiment(title, summary=None):
-    """Analyze financial sentiment using Gemini Flash."""
-    if not GEMINI_API_KEY:
-        print('  [WARN] No Gemini API key — skipping sentiment')
-        return None
+    """Analyze financial sentiment: Gemini primary, keyword fallback on 429."""
+    global _last_call, _consecutive_429s
+
+    if not GEMINI_API_KEY or _consecutive_429s >= 3:
+        # Fallback to keyword when API exhausted
+        return _keyword_sentiment(title, summary)
+
+    # Rate limit
+    elapsed = time.time() - _last_call
+    if elapsed < _min_interval:
+        time.sleep(_min_interval - elapsed)
 
     text = title
     if summary:
@@ -56,19 +105,26 @@ def analyze_sentiment(title, summary=None):
     )
 
     try:
+        _last_call = time.time()
         resp = urllib.request.urlopen(req, timeout=15)
         data = json.loads(resp.read())
         text_resp = data['candidates'][0]['content']['parts'][0]['text']
         result = _parse_result(text_resp)
         result['model'] = 'gemini-flash'
+        _consecutive_429s = 0  # Reset on success
         return result
     except urllib.error.HTTPError as e:
+        if e.code == 429:
+            _consecutive_429s += 1
+            if _consecutive_429s >= 3:
+                print(f'  [SENTIMENT] Gemini exhausted after {_consecutive_429s} 429s — switching to keyword fallback')
+            return _keyword_sentiment(title, summary)
         body = e.read().decode()[:200]
         print(f'  Gemini error: {e.code} — {body}')
-        return None
+        return _keyword_sentiment(title, summary)
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         print(f'  Gemini parse error: {e}')
-        return None
+        return _keyword_sentiment(title, summary)
     except Exception as e:
         print(f'  Gemini error: {e}')
-        return None
+        return _keyword_sentiment(title, summary)
