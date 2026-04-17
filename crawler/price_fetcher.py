@@ -33,11 +33,14 @@ def _headers(extra=None):
     return h
 
 
-def _upsert(table, data):
+def _upsert(table, data, on_conflict=None):
     """Upsert rows into Supabase."""
     body = json.dumps(data if isinstance(data, list) else [data]).encode()
+    url = f'{SUPABASE_URL}/rest/v1/{table}'
+    if on_conflict:
+        url += f'?on_conflict={on_conflict}'
     req = urllib.request.Request(
-        f'{SUPABASE_URL}/rest/v1/{table}',
+        url,
         data=body,
         headers=_headers({'Prefer': 'resolution=merge-duplicates,return=minimal'}),
     )
@@ -165,7 +168,7 @@ def run_price_pipeline(days=30, load_history=False, history_path=None):
         batch_size = 500
         for i in range(0, len(records), batch_size):
             batch = records[i:i + batch_size]
-            status = _upsert('cronos_prices', batch)
+            status = _upsert('cronos_prices', batch, on_conflict='ticker,date,source')
             if status and status < 300:
                 stats['prices'] += len(batch)
             else:
@@ -179,7 +182,7 @@ def run_price_pipeline(days=30, load_history=False, history_path=None):
     for ticker in TOP_TICKERS:
         prices = fetch_yahoo_prices(ticker, days)
         if prices:
-            status = _upsert('cronos_prices', prices)
+            status = _upsert('cronos_prices', prices, on_conflict='ticker,date,source')
             if status and status < 300:
                 stats['prices'] += len(prices)
                 print(f'  {ticker}: {len(prices)} days ✓')
@@ -193,7 +196,7 @@ def run_price_pipeline(days=30, load_history=False, history_path=None):
     for indicator, series in BCB_SERIES.items():
         records = fetch_bcb_sgs(series, indicator, days=90)
         if records:
-            status = _upsert('cronos_macro', records)
+            status = _upsert('cronos_macro', records, on_conflict='indicator,date')
             if status and status < 300:
                 stats['macro'] += len(records)
                 print(f'  {indicator}: {len(records)} records ✓')

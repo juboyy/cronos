@@ -238,7 +238,7 @@ export default async function EntityPage({ params }: { params: Promise<{ id: str
         } />
       </section>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr clamp(240px, 22vw, 340px)', gap: '36px', alignItems: 'start' }}>
+      <div className="entity-two-col">
 
         {/* ── ARTICLES ── */}
         <section>
