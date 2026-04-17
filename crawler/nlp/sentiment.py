@@ -1,11 +1,9 @@
-"""Sentiment analysis via Claude Opus (Antigravity) or Gemini Flash fallback."""
+"""Sentiment analysis via Gemini Flash (free, reliable)."""
 import json
 import urllib.request
 import urllib.error
-from config import GEMINI_API_KEY, OPENAI_API_KEY
+from config import GEMINI_API_KEY
 
-# Antigravity provides OpenAI-compatible API
-OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
 
 SENTIMENT_PROMPT = (
@@ -36,45 +34,15 @@ def _parse_result(text_resp):
     return {'score': score, 'label': label, 'confidence': confidence}
 
 
-def _analyze_opus(text):
-    """Analyze via Claude Opus through Antigravity (OpenAI-compatible)."""
-    import os
-    api_key = os.environ.get('OPENAI_API_KEY', OPENAI_API_KEY)
-    if not api_key:
-        return None
-
-    payload = {
-        'model': 'claude-opus-4-6-thinking',
-        'messages': [{'role': 'user', 'content': SENTIMENT_PROMPT.format(text=text[:500])}],
-        'max_tokens': 100,
-        'temperature': 0.1,
-    }
-
-    req = urllib.request.Request(
-        OPENAI_URL,
-        data=json.dumps(payload).encode(),
-        headers={
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {api_key}',
-        },
-    )
-
-    try:
-        resp = urllib.request.urlopen(req, timeout=30)
-        data = json.loads(resp.read())
-        text_resp = data['choices'][0]['message']['content']
-        result = _parse_result(text_resp)
-        result['model'] = 'claude-opus-4-6'
-        return result
-    except Exception as e:
-        print(f'  Opus error: {e}')
-        return None
-
-
-def _analyze_gemini(text):
-    """Analyze via Gemini Flash (fallback)."""
+def analyze_sentiment(title, summary=None):
+    """Analyze financial sentiment using Gemini Flash."""
     if not GEMINI_API_KEY:
+        print('  [WARN] No Gemini API key — skipping sentiment')
         return None
+
+    text = title
+    if summary:
+        text += f'. {summary}'
 
     payload = {
         'contents': [{'parts': [{'text': SENTIMENT_PROMPT.format(text=text[:500])}]}],
@@ -94,26 +62,13 @@ def _analyze_gemini(text):
         result = _parse_result(text_resp)
         result['model'] = 'gemini-flash'
         return result
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()[:200]
+        print(f'  Gemini error: {e.code} — {body}')
+        return None
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        print(f'  Gemini parse error: {e}')
+        return None
     except Exception as e:
         print(f'  Gemini error: {e}')
         return None
-
-
-def analyze_sentiment(title, summary=None):
-    """Analyze financial sentiment. Tries Opus first, falls back to Gemini Flash."""
-    text = title
-    if summary:
-        text += f'. {summary}'
-
-    # Try Opus first (free via Antigravity)
-    result = _analyze_opus(text)
-    if result:
-        return result
-
-    # Fallback to Gemini Flash
-    result = _analyze_gemini(text)
-    if result:
-        return result
-
-    print('  [WARN] No sentiment model available')
-    return None

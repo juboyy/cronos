@@ -31,6 +31,7 @@ def run_pipeline(sources=None, dry_run=False):
         sources = list(ALL_CRAWLERS.keys())
 
     stats = {'crawled': 0, 'new': 0, 'entities': 0, 'sentiment': 0, 'errors': 0}
+    MAX_NEW_PER_SOURCE = 20  # Cap to avoid API rate limits on sentiment
 
     for source_name in sources:
         crawler_cls = ALL_CRAWLERS.get(source_name)
@@ -50,14 +51,18 @@ def run_pipeline(sources=None, dry_run=False):
 
         print(f'  Found {len(articles)} articles')
         stats['crawled'] += len(articles)
+        new_this_source = 0
 
         for article in articles:
+            if new_this_source >= MAX_NEW_PER_SOURCE:
+                break
             try:
                 # Dedup check
                 if not dry_run and check_article_exists(article['url']):
                     continue
 
                 stats['new'] += 1
+                new_this_source += 1
 
                 if dry_run:
                     print(f'  [DRY] {article["title"][:80]}')
