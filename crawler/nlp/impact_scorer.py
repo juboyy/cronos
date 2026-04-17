@@ -182,7 +182,7 @@ def compute_impact(article, ticker, sentiment_score=0):
     }
 
 
-def run_impact_scoring(limit=100):
+def run_impact_scoring(limit=500):
     """Score impact for all unscored article-entity pairs."""
     print('[IMPACT] Finding unscored article-ticker pairs...')
     
@@ -192,66 +192,45 @@ def run_impact_scoring(limit=100):
         'type=eq.ticker&select=id,value&limit=100'
     )
     
+    # Build company→ticker map for cross-referencing
+    company_entities = _query(
+        'cronos_entities',
+        'type=eq.company&select=id,value,canonical_name&limit=200'
+    )
+    
+    # Map company names to tickers (rough matching)
+    company_ticker_map = {}
+    ticker_map = {e['value']: e for e in ticker_entities}
+    KNOWN_MAPPINGS = {
+        'petrobras': 'PETR4', 'vale': 'VALE3', 'itaú': 'ITUB4', 'itau': 'ITUB4',
+        'bradesco': 'BBDC4', 'ambev': 'ABEV3', 'weg': 'WEGE3', 'magazine luiza': 'MGLU3',
+        'magalu': 'MGLU3', 'banco do brasil': 'BBAS3', 'bb': 'BBAS3', 'suzano': 'SUZB3',
+        'localiza': 'RENT3', 'raia drogasil': 'RADL3', 'rd': 'RADL3',
+        'petrorio': 'PRIO3', 'prio': 'PRIO3', 'b3': 'B3SA3', 'gerdau': 'GGBR4',
+        'jbs': 'JBSS3', 'marfrig': 'MRFG3', 'totvs': 'TOTS3', 'hapvida': 'HAPV3',
+        'nubank': 'NU', 'nu': 'NU', 'btg': 'BPAC11', 'btg pactual': 'BPAC11',
+        'sabesp': 'SBSP3', 'embraer': 'EMBR3', 'usiminas': 'USIM5',
+        'csn': 'CSNA3', 'eletrobras': 'ELET3', 'eletrobrás': 'ELET3',
+        'cemig': 'CMIG4', 'engie': 'EGIE3', 'copel': 'CPLE6',
+    }
+    for ce in company_entities:
+        name = (ce.get('canonical_name') or ce['value']).lower().strip()
+        if name in KNOWN_MAPPINGS:
+            company_ticker_map[ce['id']] = KNOWN_MAPPINGS[name]
+    
+    print(f'  Tickers: {len(ticker_entities)}, Companies: {len(company_entities)}, Mapped: {len(company_ticker_map)}')
+    
     stats = {'scored': 0, 'skipped': 0, 'errors': 0}
     
+    # Score ticker entities directly
     for entity in ticker_entities:
         ticker = entity['value']
         entity_id = entity['id']
-        
-        # Get article links for this entity
-        links = _query(
-            'cronos_article_entities',
-            f'entity_id=eq.{entity_id}&select=article_id&limit={limit}'
-        )
-        
-        for link in links:
-            article_id = link['article_id']
-            
-            # Check if already scored
-            existing = _query(
-                'cronos_impacts',
-                f'article_id=eq.{article_id}&ticker=eq.{ticker}&select=id&limit=1'
-            )
-            if existing:
-                stats['skipped'] += 1
-                continue
-            
-            # Get article data
-            articles = _query(
-                'cronos_articles',
-                f'id=eq.{article_id}&select=title,source,published_at,summary&limit=1'
-            )
-            if not articles:
-                stats['skipped'] += 1
-                continue
-            article = articles[0]
-            
-            # Get sentiment
-            sentiments = _query(
-                'cronos_sentiment',
-                f'article_id=eq.{article_id}&select=score&limit=1'
-            )
-            sent_score = sentiments[0]['score'] if sentiments else 0
-            
-            try:
-                impact = compute_impact(article, ticker, sent_score)
-                if impact:
-                    record = {
-                        'article_id': article_id,
-                        'entity_id': entity_id,
-                        **impact,
-                    }
-                    status = _upsert('cronos_impacts', record)
-                    if status and status < 300:
-                        stats['scored'] += 1
-                        print(f'  {ticker} | Δ1d={impact["delta_1d"]}% | score={impact["impact_score"]} | vol_anom={impact["volume_anomaly"]}')
-                    else:
-                        stats['errors'] += 1
-                else:
-                    stats['skipped'] += 1
-            except Exception as e:
-                print(f'  [ERROR] {ticker}: {e}')
-                stats['errors'] += 1
+        _score_entity(entity_id, ticker, limit, stats)
+    
+    # Score company entities via ticker mapping
+    for company_id, ticker in company_ticker_map.items():
+        _score_entity(company_id, ticker, limit, stats)
     
     print(f'\n{"=" * 40}')
     print(f'Impact Scoring Complete!')
@@ -259,6 +238,63 @@ def run_impact_scoring(limit=100):
     print(f'  Skipped: {stats["skipped"]}')
     print(f'  Errors:  {stats["errors"]}')
     return stats
+
+
+def _score_entity(entity_id, ticker, limit, stats):
+    """Score impact for all articles linked to an entity."""
+    links = _query(
+        'cronos_article_entities',
+        f'entity_id=eq.{entity_id}&select=article_id&limit={limit}'
+    )
+    
+    for link in links:
+        article_id = link['article_id']
+        
+        # Check if already scored
+        existing = _query(
+            'cronos_impacts',
+            f'article_id=eq.{article_id}&ticker=eq.{ticker}&select=id&limit=1'
+        )
+        if existing:
+            stats['skipped'] += 1
+            continue
+        
+        # Get article data
+        articles = _query(
+            'cronos_articles',
+            f'id=eq.{article_id}&select=title,source,published_at,summary&limit=1'
+        )
+        if not articles:
+            stats['skipped'] += 1
+            continue
+        article = articles[0]
+        
+        # Get sentiment
+        sentiments = _query(
+            'cronos_sentiment',
+            f'article_id=eq.{article_id}&select=score&limit=1'
+        )
+        sent_score = sentiments[0]['score'] if sentiments else 0
+        
+        try:
+            impact = compute_impact(article, ticker, sent_score)
+            if impact:
+                record = {
+                    'article_id': article_id,
+                    'entity_id': entity_id,
+                    **impact,
+                }
+                status = _upsert('cronos_impacts', record)
+                if status and status < 300:
+                    stats['scored'] += 1
+                    print(f'  {ticker} | Δ1d={impact["delta_1d"]}% | score={impact["impact_score"]} | vol_anom={impact["volume_anomaly"]}')
+                else:
+                    stats['errors'] += 1
+            else:
+                stats['skipped'] += 1
+        except Exception as e:
+            print(f'  [ERROR] {ticker}: {e}')
+            stats['errors'] += 1
 
 
 if __name__ == '__main__':

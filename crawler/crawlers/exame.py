@@ -12,7 +12,12 @@ class ExameCrawler(BaseCrawler):
     # Filter to economia/finance categories
     FINANCE_KEYWORDS = ['economia', 'mercado', 'investimento', 'bolsa', 'dólar',
                         'selic', 'inflação', 'pib', 'copom', 'ação', 'b3',
-                        'finance', 'money', 'stock', 'real', 'juros']
+                        'ibovespa', 'juros', 'câmbio', 'tesouro', 'cdb',
+                        'dividendo', 'banco central', 'ipca', 'meta fiscal']
+
+    # Categories that are definitely finance
+    FINANCE_CATEGORIES = ['economia', 'invest', 'mercado', 'negocios', 'negócios',
+                          'business', 'finanças', 'finance', 'money']
 
     def fetch(self):
         raw = self._fetch_with_fallback(self.url)
@@ -21,9 +26,14 @@ class ExameCrawler(BaseCrawler):
         return self.parse(raw)
 
     def _is_finance(self, title, summary, categories):
-        """Check if article is finance-related."""
-        text = (title + ' ' + (summary or '') + ' ' + ' '.join(categories)).lower()
-        return any(kw in text for kw in self.FINANCE_KEYWORDS)
+        """Check if article is finance-related. Category match is strong signal."""
+        cats_lower = ' '.join(categories).lower()
+        # Strong match: finance category
+        if any(fc in cats_lower for fc in self.FINANCE_CATEGORIES):
+            return True
+        # Weak match: keyword in title only (not summary to avoid false positives)
+        title_lower = title.lower()
+        return sum(1 for kw in self.FINANCE_KEYWORDS if kw in title_lower) >= 2
 
     def parse(self, raw):
         articles = []

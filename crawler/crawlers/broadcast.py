@@ -7,7 +7,7 @@ from crawlers.base import BaseCrawler
 
 class BroadcastCrawler(BaseCrawler):
     name = 'broadcast'
-    url = 'https://www.estadao.com.br/economia/broadcast/feed/'
+    url = 'https://www.broadcast.com.br/feed/'
 
     def fetch(self):
         raw = self._fetch_with_fallback(self.url)

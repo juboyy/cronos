@@ -1,7 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType, LineStyle, type IChartApi, type ISeriesApi } from 'lightweight-charts';
+import {
+  createChart,
+  ColorType,
+  LineStyle,
+  AreaSeries,
+  HistogramSeries,
+  createSeriesMarkers,
+  type IChartApi,
+} from 'lightweight-charts';
 
 interface PricePoint {
   date: string;
@@ -89,8 +97,8 @@ export default function TradingViewChart({ ticker, prices, events = [], height =
     const areaTop = isUp ? 'hsla(155, 70%, 45%, 0.15)' : 'hsla(0, 65%, 50%, 0.12)';
     const areaBottom = isUp ? 'hsla(155, 70%, 45%, 0)' : 'hsla(0, 65%, 50%, 0)';
 
-    // Area series for price
-    const areaSeries = chart.addAreaSeries({
+    // v5 API: addSeries(AreaSeries, options)
+    const areaSeries = chart.addSeries(AreaSeries, {
       lineColor,
       topColor: areaTop,
       bottomColor: areaBottom,
@@ -111,7 +119,7 @@ export default function TradingViewChart({ ticker, prices, events = [], height =
 
     // Volume histogram
     if (sorted.some(p => p.volume && p.volume > 0)) {
-      const volumeSeries = chart.addHistogramSeries({
+      const volumeSeries = chart.addSeries(HistogramSeries, {
         color: 'hsla(220, 30%, 50%, 0.2)',
         priceFormat: { type: 'volume' },
         priceScaleId: 'volume',
@@ -124,17 +132,17 @@ export default function TradingViewChart({ ticker, prices, events = [], height =
       volumeSeries.setData(
         sorted
           .filter(p => p.volume && p.volume > 0)
-          .map(p => ({
+          .map((p, i) => ({
             time: p.date as any,
             value: p.volume!,
-            color: p.close >= (sorted[sorted.indexOf(p) - 1]?.close ?? p.close)
+            color: p.close >= (sorted[Math.max(0, sorted.indexOf(p) - 1)]?.close ?? p.close)
               ? 'hsla(155, 60%, 45%, 0.25)'
               : 'hsla(0, 55%, 50%, 0.25)',
           }))
       );
     }
 
-    // Sentiment markers
+    // Sentiment markers (v5: createSeriesMarkers)
     if (events.length > 0) {
       const markers = events
         .filter(e => {
@@ -144,14 +152,14 @@ export default function TradingViewChart({ ticker, prices, events = [], height =
         .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
         .map(e => ({
           time: e.time.split('T')[0] as any,
-          position: e.score > 0 ? 'aboveBar' as const : 'belowBar' as const,
+          position: (e.score > 0 ? 'aboveBar' : 'belowBar') as any,
           color: e.score > 0.1 ? 'hsl(155 70% 55%)' : e.score < -0.1 ? 'hsl(0 65% 55%)' : 'hsl(45 70% 55%)',
-          shape: e.score > 0.1 ? 'arrowUp' as const : e.score < -0.1 ? 'arrowDown' as const : 'circle' as const,
+          shape: (e.score > 0.1 ? 'arrowUp' : e.score < -0.1 ? 'arrowDown' : 'circle') as any,
           text: e.title.length > 40 ? e.title.slice(0, 37) + '…' : e.title,
         }));
 
       if (markers.length > 0) {
-        areaSeries.setMarkers(markers);
+        createSeriesMarkers(areaSeries, markers);
       }
     }
 

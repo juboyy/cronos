@@ -1,5 +1,7 @@
 import { supabaseQuery } from '@/lib/supabase';
 import EntityCharts from '@/components/EntityCharts';
+import { TransmissionChain } from '@/components/TransmissionChain';
+import { SentimentHeatmap } from '@/components/SentimentHeatmap';
 
 export const dynamic = 'force-dynamic';
 
@@ -209,6 +211,33 @@ export default async function EntityPage({ params }: { params: Promise<{ id: str
       )}
 
       {/* ━━ TWO-COLUMN ━━ */}
+
+      {/* ━━ TRANSMISSION CHAIN ━━ */}
+      {entity.type === 'ticker' && (
+        <section className="stagger" style={{ padding: '24px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)' }}>
+          <TransmissionChain events={
+            impacts.map((imp: any) => ({
+              title: imp.cronos_articles?.title || 'Artigo sem título',
+              source: imp.cronos_articles?.source || 'desconhecido',
+              date: imp.cronos_articles?.published_at || '',
+              sentiment: imp.sentiment_score ?? null,
+              delta: imp.delta_1d ?? null,
+              impactScore: imp.impact_score ?? 0,
+            }))
+          } />
+        </section>
+      )}
+
+      {/* ━━ SENTIMENT HEATMAP ━━ */}
+      <section className="stagger" style={{ padding: '24px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)' }}>
+        <SentimentHeatmap articles={
+          articles.map((a: any) => ({
+            published_at: a.published_at || '',
+            sentiment: a.cronos_sentiment?.[0]?.score ?? undefined,
+          }))
+        } />
+      </section>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr clamp(240px, 22vw, 340px)', gap: '36px', alignItems: 'start' }}>
 
         {/* ── ARTICLES ── */}

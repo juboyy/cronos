@@ -7,8 +7,6 @@ const NAV = [
   { href: '/briefing', label: 'Briefing' },
   { href: '/impact', label: 'Impacto' },
   { href: '/simulate', label: 'Simular' },
-  { href: '/charts', label: 'Gráficos' },
-  { href: '/patterns', label: 'Padrões' },
   { href: '/alerts', label: 'Alertas' },
   { href: '/search', label: 'Busca' },
 ];
