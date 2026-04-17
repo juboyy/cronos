@@ -1,74 +1,49 @@
-import { SUPABASE_URL, SUPABASE_KEY } from '@/lib/supabase';
+import { engineRequest } from '@/lib/engine';
 import { NextRequest, NextResponse } from 'next/server';
 
-// POST: start simulation | GET: list simulations
+// POST: start simulation via MiroFish engine
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { scenario, tickers, config } = body;
+    const { scenario, tickers, context, agent_count, max_rounds, market_data } = body;
 
     if (!scenario) {
       return NextResponse.json({ error: 'scenario required' }, { status: 400 });
     }
 
-    const simId = crypto.randomUUID();
-    
-    // Create pending record
-    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/cronos_simulations`, {
+    const result = await engineRequest('/api/simulate', {
       method: 'POST',
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=representation',
-      },
       body: JSON.stringify({
-        id: simId,
         scenario,
         tickers: tickers || [],
-        config: config || {},
-        status: 'pending',
+        context: context || '',
+        agent_count: agent_count || 12,
+        max_rounds: max_rounds || 8,
+        market_data: market_data || '',
       }),
     });
 
-    if (!insertRes.ok) {
-      const err = await insertRes.text();
-      return NextResponse.json({ error: err }, { status: 500 });
-    }
-
-    // Trigger simulation async (fire-and-forget to Python backend)
-    // In production this would be a queue; for now we return pending
-    // and the Python adapter processes it via cron or webhook
-    
-    return NextResponse.json({
-      simulation_id: simId,
-      status: 'pending',
-      message: 'Simulation queued. Poll GET /api/cronos/simulate?id=<id> for results.',
-    }, { status: 201 });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json(result, { status: 202 });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
+// GET: get simulation by id or list all
 export async function GET(req: NextRequest) {
-  const id = req.nextUrl.searchParams.get('id');
-  const limit = req.nextUrl.searchParams.get('limit') || '10';
+  try {
+    const id = req.nextUrl.searchParams.get('id');
 
-  let query = 'select=*&order=created_at.desc';
-  if (id) {
-    query = `id=eq.${id}&select=*`;
-  } else {
-    query += `&limit=${limit}`;
+    if (id) {
+      const result = await engineRequest(`/api/simulate/${id}`);
+      return NextResponse.json(result);
+    }
+
+    const result = await engineRequest('/api/simulations');
+    return NextResponse.json(result);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
-
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/cronos_simulations?${query}`, {
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-    },
-    next: { revalidate: 10 },
-  });
-
-  const data = await res.json();
-  return NextResponse.json(id ? data[0] || null : data);
 }
