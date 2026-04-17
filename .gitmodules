@@ -1,0 +1,6 @@
+[submodule "engines/bettafish"]
+	path = engines/bettafish
+	url = https://github.com/666ghj/BettaFish.git
+[submodule "engines/mirofish"]
+	path = engines/mirofish
+	url = https://github.com/666ghj/MiroFish.git
