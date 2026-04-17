@@ -39,8 +39,8 @@ export default async function PatternsPage() {
       <div>
         <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.75rem', fontWeight: 400, color: 'var(--text-primary)', marginBottom: '8px' }}>Patterns</h1>
         <p style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)', maxWidth: '60ch' }}>
-          Recurring correlations between news events and price reactions.
-          Pattern confidence grows with each confirmed occurrence.
+          Correlações recorrentes entre eventos de notícias e reações de preço.
+          A confiança do padrão cresce com cada ocorrência confirmada.
         </p>
       </div>
 
@@ -124,7 +124,7 @@ export default async function PatternsPage() {
       {patterns.length === 0 && (
         <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)' }}>
           <div style={{ fontFamily: 'var(--font-serif)', fontSize: '2rem', marginBottom: '8px' }}>≈</div>
-          <div style={{ fontSize: '0.8125rem' }}>No patterns detected yet. Run the impact scorer to build correlation data.</div>
+          <div style={{ fontSize: '0.8125rem' }}>Nenhum padrão detectado. Execute o scorer de impacto para construir dados de correlação.</div>
         </div>
       )}
     </div>

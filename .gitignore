@@ -18,3 +18,7 @@ __pycache__/
 web/.next/
 web/out/
 web/node_modules/
+-e 
+data/b3-historico/
+*.ZIP
+*.TXT

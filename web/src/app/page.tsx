@@ -7,7 +7,7 @@ async function getData() {
     supabaseQuery('cronos_articles', 'select=id,title,source,summary,published_at,url,cronos_sentiment(score,label)&order=published_at.desc.nullslast&limit=25'),
     supabaseQuery('cronos_entities', 'select=id,type,value,canonical_name,sector&type=eq.ticker&limit=15'),
     supabaseQuery('cronos_sentiment', 'select=score,label&limit=200'),
-    supabaseQuery('cronos_macro', 'select=indicator,value,date&order=date.desc&limit=8'),
+    supabaseQuery('cronos_macro', 'select=indicator,value,date&order=date.desc&limit=30'),
     supabaseQuery('cronos_impacts', 'select=ticker,impact_score,delta_1d,volume_anomaly&order=impact_score.desc&limit=8'),
     supabaseQuery('cronos_prices', 'select=ticker,date,close,volume&order=date.desc&limit=60'),
   ]);
@@ -59,12 +59,14 @@ export default async function IntelligencePage() {
   const { articles, entities, avgSent, posPct, negPct, sentimentCount, macroMap, impacts, priceMap } = await getData();
 
   const macroEntries = Object.entries(macroMap) as [string, any][];
-  const macroLabels: Record<string, string> = { selic: 'Selic', ipca: 'IPCA', usdbrl: 'USD/BRL', cdi: 'CDI' };
+  const macroLabels: Record<string, string> = { selic: 'Selic', ipca: 'IPCA', usdbrl: 'USD/BRL', cdi: 'CDI', ibov: 'Ibovespa', dxy: 'DXY' };
   const macroFormats: Record<string, (v: number) => string> = {
     selic: (v) => `${v.toFixed(2)}%`,
     ipca: (v) => `${v.toFixed(2)}%`,
     usdbrl: (v) => `R$${v.toFixed(4)}`,
     cdi: (v) => `${(v * 100).toFixed(4)}%`,
+    ibov: (v) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }),
+    dxy: (v) => v.toFixed(2),
   };
 
   return (

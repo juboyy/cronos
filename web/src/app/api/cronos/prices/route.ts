@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(req: NextRequest) {
   const ticker = req.nextUrl.searchParams.get('ticker');
-  const days = req.nextUrl.searchParams.get('days') || '30';
+  const days = req.nextUrl.searchParams.get('days') || '90';
   const indicator = req.nextUrl.searchParams.get('indicator');
 
   // Prices

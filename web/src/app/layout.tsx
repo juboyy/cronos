@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { NavBar } from '@/components/NavBar';
+import TickerTapeWrapper from '@/components/TickerTapeWrapper';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -11,6 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR">
       <body>
+        <TickerTapeWrapper />
         <NavBar />
         <main
           style={{

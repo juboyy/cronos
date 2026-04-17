@@ -15,32 +15,61 @@ export async function GET(
     }
     const entity = entities[0];
 
-    // Get linked articles
-    const links = await supabaseQuery(
+    // Get linked articles (try direct link first)
+    let links = await supabaseQuery(
       'cronos_article_entities',
-      `entity_id=eq.${id}&select=article_id,relevance,context,cronos_articles(id,title,source,url,summary,published_at),cronos_articles!inner(cronos_sentiment(score,label))&order=cronos_articles(published_at).desc&limit=30`
+      `entity_id=eq.${id}&select=article_id,relevance,context,cronos_articles(id,title,source,url,summary,published_at)&order=cronos_articles(published_at).desc&limit=30`
     );
 
-    // Get average sentiment
-    const articleIds = links.map((l: any) => l.article_id);
+    // If no results and it's a ticker, search by title mention
+    if (links.length === 0 && entity.type === 'ticker') {
+      const fallbackArticles = await supabaseQuery(
+        'cronos_articles',
+        `title=ilike.*${entity.value}*&select=id,title,source,url,summary,published_at&order=published_at.desc&limit=30`
+      );
+      links = fallbackArticles.map((a: any) => ({
+        article_id: a.id,
+        relevance: 0.5,
+        context: 'title mention',
+        cronos_articles: a,
+      }));
+    }
+
+    // Get sentiments for linked articles
+    const articleIds = links.map((l: any) => l.article_id).filter(Boolean);
+    let sentiments: any[] = [];
     let avgSentiment = null;
+
     if (articleIds.length > 0) {
-      const sentiments = await supabaseQuery(
+      sentiments = await supabaseQuery(
         'cronos_sentiment',
-        `article_id=in.(${articleIds.join(',')})&select=score`
+        `article_id=in.(${articleIds.join(',')})&select=article_id,score,label`
       );
       if (sentiments.length > 0) {
-        const sum = sentiments.reduce((a: number, s: any) => a + s.score, 0);
+        const sum = sentiments.reduce((a: number, s: any) => a + (s.score || 0), 0);
         avgSentiment = sum / sentiments.length;
       }
     }
 
+    // Enrich articles with sentiment
+    const sentMap: Record<string, any> = {};
+    for (const s of sentiments) sentMap[s.article_id] = s;
+
+    const articles = links.map((l: any) => ({
+      ...l,
+      cronos_articles: l.cronos_articles ? {
+        ...l.cronos_articles,
+        sentiment: sentMap[l.article_id] || null,
+      } : null,
+    }));
+
     return NextResponse.json({
       entity,
-      articles: links,
+      articles,
       stats: {
-        article_count: links.length,
+        article_count: articles.length,
         avg_sentiment: avgSentiment,
+        sentiment_count: sentiments.length,
       },
     });
   } catch (e: any) {

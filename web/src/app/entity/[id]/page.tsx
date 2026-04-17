@@ -1,4 +1,5 @@
 import { supabaseQuery } from '@/lib/supabase';
+import EntityCharts from '@/components/EntityCharts';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,15 +8,49 @@ async function getEntity(id: string) {
   return entities[0] || null;
 }
 
-async function getLinkedArticles(entityId: string) {
-  return supabaseQuery(
+async function getLinkedArticles(entityId: string, entityValue: string, entityType: string) {
+  // First try direct entity link
+  let articles = await supabaseQuery(
     'cronos_article_entities',
     `entity_id=eq.${entityId}&select=relevance,context,cronos_articles(id,title,source,url,summary,published_at,cronos_sentiment(score,label))&order=cronos_articles(published_at).desc&limit=30`
   );
+  
+  // If no results and this is a ticker, also search for the company entity
+  if (articles.length === 0 && entityType === 'ticker') {
+    // Find related entities (company with same canonical_name)
+    const relatedEntities = await supabaseQuery(
+      'cronos_entities',
+      `type=eq.company&canonical_name=not.is.null&select=id,canonical_name`
+    );
+    
+    // Search for entity links from ALL related entities
+    for (const rel of relatedEntities) {
+      const relArticles = await supabaseQuery(
+        'cronos_article_entities',
+        `entity_id=eq.${rel.id}&select=relevance,context,cronos_articles(id,title,source,url,summary,published_at,cronos_sentiment(score,label))&order=cronos_articles(published_at).desc&limit=30`
+      );
+      if (relArticles.length > 0 && 
+          rel.canonical_name?.toLowerCase().includes(entityValue?.toLowerCase()?.replace(/\d+/g, ''))) {
+        articles = relArticles;
+        break;
+      }
+    }
+    
+    // Fallback: search articles by ticker mention in title
+    if (articles.length === 0) {
+      const fallback = await supabaseQuery(
+        'cronos_articles',
+        `title=ilike.*${entityValue}*&select=id,title,source,url,summary,published_at,cronos_sentiment(score,label)&order=published_at.desc&limit=30`
+      );
+      articles = fallback.map((a: any) => ({ relevance: 0.5, context: 'title mention', cronos_articles: a }));
+    }
+  }
+  
+  return articles;
 }
 
 async function getPrices(ticker: string) {
-  return supabaseQuery('cronos_prices', `ticker=eq.${ticker}&select=date,close,volume&order=date.desc&limit=30`);
+  return supabaseQuery('cronos_prices', `ticker=eq.${ticker}&select=date,close,volume&order=date.desc&limit=365`);
 }
 
 async function getImpacts(ticker: string) {
@@ -74,7 +109,7 @@ export default async function EntityPage({ params }: { params: Promise<{ id: str
   }
 
   const [links, prices, impacts] = await Promise.all([
-    getLinkedArticles(id),
+    getLinkedArticles(id, entity.value, entity.type),
     entity.type === 'ticker' ? getPrices(entity.value) : Promise.resolve([]),
     entity.type === 'ticker' ? getImpacts(entity.value) : Promise.resolve([]),
   ]);
@@ -157,6 +192,21 @@ export default async function EntityPage({ params }: { params: Promise<{ id: str
           </div>
         )}
       </section>
+
+      {/* ━━ INTERACTIVE CHART ━━ */}
+      {entity.type === 'ticker' && (
+        <section className="stagger">
+          <EntityCharts ticker={entity.value} prices={prices} events={
+            articles
+              .filter((a: any) => a.cronos_sentiment?.[0]?.score != null)
+              .map((a: any) => ({
+                time: a.published_at || '',
+                score: a.cronos_sentiment[0].score,
+                title: a.title || '',
+              }))
+          } />
+        </section>
+      )}
 
       {/* ━━ TWO-COLUMN ━━ */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr clamp(240px, 22vw, 340px)', gap: '36px', alignItems: 'start' }}>

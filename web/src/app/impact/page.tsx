@@ -54,7 +54,7 @@ export default async function ImpactPage() {
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px' }}>
-        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.75rem', fontWeight: 400 }}>Impact Analysis</h1>
+        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.75rem', fontWeight: 400 }}>Análise de Impacto</h1>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)' }}>
           {impacts.length} correlações computadas
         </span>
@@ -64,7 +64,7 @@ export default async function ImpactPage() {
       {ranked.length > 0 && (
         <section>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>
-            Entity Ranking — Exposure Index
+            Ranking de Ativos — Índice de Exposição
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '2px' }}>
             {ranked.map((r, i) => {
@@ -96,7 +96,7 @@ export default async function ImpactPage() {
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)' }}>
                     <span>{r.count} eventos</span>
-                    {r.volAnomalies > 0 && <span style={{ color: 'var(--signal-down)' }}>{r.volAnomalies} vol alerts</span>}
+                    {r.volAnomalies > 0 && <span style={{ color: 'var(--signal-down)' }}>{r.volAnomalies} alertas vol</span>}
                   </div>
                 </div>
               );
@@ -108,7 +108,7 @@ export default async function ImpactPage() {
       {/* ── IMPACT TABLE ── */}
       <section>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>
-          Event → Price Correlation
+          Evento → Correlação de Preço
         </div>
 
         {/* Table header */}
@@ -126,8 +126,8 @@ export default async function ImpactPage() {
             textTransform: 'uppercase',
           }}
         >
-          <span>Ticker</span>
-          <span>Headline</span>
+          <span>Ativo</span>
+          <span>Manchete</span>
           <span style={{ textAlign: 'right' }}>Δ 1d</span>
           <span style={{ textAlign: 'right' }}>Δ 5d</span>
           <span style={{ textAlign: 'right' }}>Vol</span>

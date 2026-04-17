@@ -1,57 +1,42 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { SUPABASE_URL, SUPABASE_KEY } from '@/lib/supabase';
+import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const limit = Math.min(parseInt(searchParams.get('limit') || '10'), 30);
-  const hours = parseInt(searchParams.get('hours') || '24');
+  const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '10'), 30);
 
   try {
-    // Use RPC or raw query via exec_sql
-    const since = new Date(Date.now() - hours * 3600000).toISOString();
+    // Get entities with most article links using PostgREST joins instead of exec_sql
+    const entitiesRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/cronos_article_entities?select=entity_id,cronos_entities!inner(id,type,value,canonical_name,sector)&limit=500`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, next: { revalidate: 900 } }
+    );
 
-    // Get entities with most article links in the time window
-    const query = `
-      SELECT e.id, e.type, e.value, e.canonical_name, e.sector,
-             COUNT(ae.article_id) as mention_count,
-             AVG(s.score) as avg_sentiment
-      FROM cronos_entities e
-      JOIN cronos_article_entities ae ON ae.entity_id = e.id
-      JOIN cronos_articles a ON a.id = ae.article_id
-      LEFT JOIN cronos_sentiment s ON s.article_id = a.id
-      WHERE a.crawled_at >= '${since}'
-      GROUP BY e.id
-      ORDER BY mention_count DESC
-      LIMIT ${limit}
-    `.trim();
-
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/exec_sql`, {
-      method: 'POST',
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query }),
-    });
-
-    if (!res.ok) {
-      // Fallback: just return most recent entities
-      const fallback = await fetch(
+    if (!entitiesRes.ok) {
+      // Simple fallback: just list ticker entities
+      const fallbackRes = await fetch(
         `${SUPABASE_URL}/rest/v1/cronos_entities?select=id,type,value,canonical_name,sector&type=eq.ticker&limit=${limit}`,
-        {
-          headers: {
-            apikey: SUPABASE_KEY,
-            Authorization: `Bearer ${SUPABASE_KEY}`,
-          },
-        }
+        { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
       );
-      const entities = await fallback.json();
-      return NextResponse.json({ trending: entities, source: 'fallback' });
+      return NextResponse.json({ trending: await fallbackRes.json(), source: 'fallback' });
     }
 
-    const data = await res.json();
-    return NextResponse.json({ trending: data, hours });
+    const links = await entitiesRes.json();
+
+    // Aggregate mention counts client-side
+    const counts: Record<string, { entity: any; count: number }> = {};
+    for (const link of links) {
+      const e = link.cronos_entities;
+      if (!e) continue;
+      if (!counts[e.id]) counts[e.id] = { entity: e, count: 0 };
+      counts[e.id].count++;
+    }
+
+    const trending = Object.values(counts)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, limit)
+      .map(c => ({ ...c.entity, mention_count: c.count }));
+
+    return NextResponse.json({ trending });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

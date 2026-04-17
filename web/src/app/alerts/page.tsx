@@ -60,7 +60,7 @@ export default function AlertsPage() {
         <div>
           <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.75rem', fontWeight: 400, color: 'var(--text-primary)', marginBottom: '8px' }}>Alerts</h1>
           <p style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)' }}>
-            {alerts.filter(a => a.active).length} active monitors
+            {alerts.filter(a => a.active).length} alertas ativos
           </p>
         </div>
         <button
@@ -79,7 +79,7 @@ export default function AlertsPage() {
             textTransform: 'uppercase',
           }}
         >
-          {showForm ? 'Cancel' : '+ New Alert'}
+          {showForm ? 'Cancelar' : '+ New Alert'}
         </button>
       </div>
 
@@ -135,7 +135,7 @@ export default function AlertsPage() {
                 textTransform: 'uppercase',
               }}
             >
-              Create Alert
+              Criar Alerta
             </button>
           </div>
         </form>
@@ -194,7 +194,7 @@ export default function AlertsPage() {
               {/* Trigger count */}
               <div style={{ textAlign: 'right' }}>
                 <span style={{ ...S.mono, fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>{alert.trigger_count}</span>
-                <span style={{ ...S.mono, fontSize: '0.5625rem', color: 'var(--text-muted)', marginLeft: '4px' }}>triggers</span>
+                <span style={{ ...S.mono, fontSize: '0.5625rem', color: 'var(--text-muted)', marginLeft: '4px' }}>disparos</span>
               </div>
             </div>
           );
@@ -203,7 +203,7 @@ export default function AlertsPage() {
         {alerts.length === 0 && (
           <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)' }}>
             <div style={{ fontFamily: 'var(--font-serif)', fontSize: '2rem', marginBottom: '8px' }}>◇</div>
-            <div style={{ fontSize: '0.8125rem' }}>No alerts configured. Create one to start monitoring.</div>
+            <div style={{ fontSize: '0.8125rem' }}>Nenhum alerta configurado. Crie um para começar a monitorar.</div>
           </div>
         )}
       </div>

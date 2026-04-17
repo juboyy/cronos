@@ -12,7 +12,12 @@ export default function SimulatePage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    fetch('/api/cronos/simulate').then(r => r.json()).then(setSimulations).catch(() => {});
+    fetch('/api/cronos/simulate').then(r => r.json()).then((sims) => {
+      setSimulations(sims);
+      // Auto-select the latest completed simulation
+      const completed = sims.find((s: any) => s.status === 'completed' && s.result);
+      if (completed) setActive(completed);
+    }).catch(() => {});
   }, []);
 
   const submit = async (e: React.FormEvent) => {

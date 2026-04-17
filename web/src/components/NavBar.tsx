@@ -1,16 +1,21 @@
 'use client';
 
+import { useState } from 'react';
+
 const NAV = [
-  { href: '/', label: 'Intelligence' },
+  { href: '/', label: 'Feed' },
   { href: '/briefing', label: 'Briefing' },
-  { href: '/impact', label: 'Impact' },
-  { href: '/simulate', label: 'Simulate' },
-  { href: '/patterns', label: 'Patterns' },
-  { href: '/alerts', label: 'Alerts' },
-  { href: '/search', label: 'Search' },
+  { href: '/impact', label: 'Impacto' },
+  { href: '/simulate', label: 'Simular' },
+  { href: '/charts', label: 'Gráficos' },
+  { href: '/patterns', label: 'Padrões' },
+  { href: '/alerts', label: 'Alertas' },
+  { href: '/search', label: 'Busca' },
 ];
 
 export function NavBar() {
+  const [open, setOpen] = useState(false);
+
   return (
     <header
       style={{
@@ -57,22 +62,23 @@ export function NavBar() {
               borderRadius: 'var(--radius-sm)',
             }}
           >
-            live
+            2.0
           </span>
         </a>
 
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {/* Desktop nav */}
+        <nav className="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
           {NAV.map((n) => (
             <a
               key={n.href}
               href={n.href}
               style={{
                 fontFamily: 'var(--font-mono)',
-                fontSize: '0.6875rem',
+                fontSize: '0.625rem',
                 color: 'var(--text-tertiary)',
                 letterSpacing: '0.04em',
                 textTransform: 'uppercase',
-                padding: '6px 12px',
+                padding: '6px 10px',
                 borderRadius: 'var(--radius)',
                 transition: 'color 150ms, background 150ms',
               }}
@@ -89,7 +95,66 @@ export function NavBar() {
             </a>
           ))}
         </nav>
+
+        {/* Mobile hamburger */}
+        <button
+          className="mobile-menu-btn"
+          onClick={() => setOpen(!open)}
+          style={{
+            display: 'none',
+            background: 'none',
+            border: 'none',
+            color: 'var(--text-secondary)',
+            fontSize: '1.25rem',
+            cursor: 'pointer',
+            padding: '4px',
+          }}
+          aria-label="Menu"
+        >
+          {open ? '✕' : '☰'}
+        </button>
       </div>
+
+      {/* Mobile dropdown */}
+      {open && (
+        <div
+          className="mobile-nav"
+          style={{
+            display: 'none',
+            flexDirection: 'column',
+            padding: '8px clamp(16px, 3vw, 40px) 16px',
+            borderTop: '1px solid var(--border-subtle)',
+            background: 'hsl(225 15% 3.5% / 0.98)',
+          }}
+        >
+          {NAV.map((n) => (
+            <a
+              key={n.href}
+              href={n.href}
+              onClick={() => setOpen(false)}
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.75rem',
+                color: 'var(--text-secondary)',
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                padding: '10px 0',
+                borderBottom: '1px solid var(--border-subtle)',
+              }}
+            >
+              {n.label}
+            </a>
+          ))}
+        </div>
+      )}
+
+      <style>{`
+        @media (max-width: 768px) {
+          .desktop-nav { display: none !important; }
+          .mobile-menu-btn { display: block !important; }
+          .mobile-nav { display: flex !important; }
+        }
+      `}</style>
     </header>
   );
 }
