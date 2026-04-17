@@ -1,95 +1,130 @@
 import { supabaseQuery } from '@/lib/supabase';
-import type { Pattern } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
-async function getPatterns() {
-  return supabaseQuery('cronos_patterns', 'select=*&order=occurrences.desc&limit=50');
-}
+async function getData() {
+  const patterns = await supabaseQuery('cronos_patterns', 'select=*&order=occurrences.desc&limit=50');
 
-const TYPE_COLORS: Record<string, string> = {
-  dividend: 'text-emerald-400 bg-emerald-900/30',
-  earnings: 'text-amber-400 bg-amber-900/30',
-  acquisition: 'text-purple-400 bg-purple-900/30',
-  regulatory: 'text-red-400 bg-red-900/30',
-  macro: 'text-blue-400 bg-blue-900/30',
-  governance: 'text-orange-400 bg-orange-900/30',
-  operational: 'text-cyan-400 bg-cyan-900/30',
-  market: 'text-pink-400 bg-pink-900/30',
-  general: 'text-gray-400 bg-gray-800',
-};
-
-export default async function PatternsPage() {
-  const patterns = await getPatterns();
-
-  // Group by ticker
-  const grouped: Record<string, Pattern[]> = {};
+  const grouped: Record<string, any[]> = {};
   for (const p of patterns) {
     if (!grouped[p.ticker]) grouped[p.ticker] = [];
     grouped[p.ticker].push(p);
   }
 
+  return { patterns, grouped };
+}
+
+const TYPE_ACCENTS: Record<string, string> = {
+  dividend: 'hsl(155 65% 45%)',
+  earnings: 'hsl(45 75% 50%)',
+  acquisition: 'hsl(280 50% 55%)',
+  regulatory: 'hsl(0 65% 50%)',
+  macro: 'hsl(210 60% 55%)',
+  governance: 'hsl(30 70% 50%)',
+  operational: 'hsl(180 55% 45%)',
+  market: 'hsl(330 60% 55%)',
+  general: 'hsl(225 10% 40%)',
+};
+
+export default async function PatternsPage() {
+  const { patterns, grouped } = await getData();
+
+  const S = {
+    label: { fontFamily: 'var(--font-mono)', fontSize: '0.5625rem' as const, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' as const },
+    mono: { fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' as const },
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <h1 className="text-lg font-bold text-gray-200 tracking-tight">Padrões</h1>
-        <span className="text-[10px] text-emerald-600 border border-emerald-800/50 rounded px-1.5 py-0.5">
-          {patterns.length} padrões detectados
-        </span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
+      <div>
+        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.75rem', fontWeight: 400, color: 'var(--text-primary)', marginBottom: '8px' }}>Patterns</h1>
+        <p style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)', maxWidth: '60ch' }}>
+          Recurring correlations between news events and price reactions.
+          Pattern confidence grows with each confirmed occurrence.
+        </p>
       </div>
 
-      <p className="text-xs text-gray-500">
-        Padrões recorrentes: &quot;quando X acontece, Y reage assim&quot;. Baseado em correlação histórica notícia → preço.
-      </p>
-
       {Object.entries(grouped).map(([ticker, pats]) => (
-        <div key={ticker} className="border border-gray-800/60 rounded-lg bg-[#0d0d14] overflow-hidden">
-          <div className="p-4 border-b border-gray-800/40 flex items-center gap-3">
-            <span className="text-cyan-400 font-mono font-bold">{ticker}</span>
-            <span className="text-[10px] text-gray-600">{pats.length} padrões</span>
+        <section key={ticker}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+            <span style={{ ...S.mono, fontSize: '1rem', color: 'var(--text-primary)', fontWeight: 600 }}>{ticker}</span>
+            <span style={{ ...S.label }}>{pats.length} {pats.length === 1 ? 'pattern' : 'patterns'}</span>
+            <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
           </div>
-          <div className="divide-y divide-gray-800/30">
-            {pats.map((p) => (
-              <div key={p.id} className="px-4 py-3 hover:bg-gray-800/20 transition-colors">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${TYPE_COLORS[p.pattern_type] || TYPE_COLORS.general}`}>
-                        {p.pattern_type}
-                      </span>
-                      <span className="text-[10px] text-gray-600">{p.occurrences} ocorrências</span>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {pats.map((p: any) => {
+              const accentColor = TYPE_ACCENTS[p.pattern_type] || TYPE_ACCENTS.general;
+              return (
+                <div
+                  key={p.id}
+                  className="interactive"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '100px 1fr auto',
+                    gap: '16px',
+                    alignItems: 'start',
+                    padding: '14px 16px',
+                    borderLeft: `2px solid ${accentColor}`,
+                    borderBottom: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  {/* Type + Occurrences */}
+                  <div>
+                    <span style={{ ...S.mono, fontSize: '0.6875rem', color: accentColor, display: 'block', marginBottom: '4px' }}>
+                      {p.pattern_type}
+                    </span>
+                    <span style={{ ...S.label }}>{p.occurrences} events</span>
+                  </div>
+
+                  {/* Description + Samples */}
+                  <div>
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '6px' }}>
+                      {p.description}
                     </div>
-                    <p className="text-sm text-gray-300">{p.description}</p>
-                    {p.sample_articles?.slice(0, 2).map((sa, i) => (
-                      <div key={i} className="text-[10px] text-gray-500 mt-1 flex items-center gap-2">
-                        <span className="text-gray-700">→</span>
-                        <span className="truncate">{sa.title}</span>
-                        {sa.delta !== null && (
-                          <span className={sa.delta > 0 ? 'text-emerald-600' : 'text-red-600'}>
-                            {sa.delta > 0 ? '+' : ''}{sa.delta?.toFixed(2)}%
+                    {p.sample_articles?.slice(0, 2).map((sa: any, i: number) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.625rem' }}>→</span>
+                        <span style={{ fontSize: '0.6875rem', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {sa.title}
+                        </span>
+                        {sa.delta != null && (
+                          <span style={{ ...S.mono, fontSize: '0.625rem', color: sa.delta > 0 ? 'var(--signal-up)' : 'var(--signal-down)', flexShrink: 0 }}>
+                            {sa.delta > 0 ? '+' : ''}{sa.delta.toFixed(2)}%
                           </span>
                         )}
                       </div>
                     ))}
                   </div>
-                  <div className="text-right shrink-0">
-                    <div className={`text-sm font-mono font-bold ${p.avg_impact > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+
+                  {/* Stats */}
+                  <div style={{ textAlign: 'right', minWidth: '80px' }}>
+                    <div style={{
+                      ...S.mono,
+                      fontSize: '1rem',
+                      color: p.avg_impact > 0 ? 'var(--signal-up)' : p.avg_impact < 0 ? 'var(--signal-down)' : 'var(--text-secondary)',
+                      fontWeight: 500,
+                    }}>
                       {p.avg_impact > 0 ? '+' : ''}{p.avg_impact?.toFixed(2)}%
                     </div>
-                    <div className="text-[10px] text-gray-600">σ {p.std_dev?.toFixed(2)}%</div>
-                    <div className="text-[10px] text-gray-600">conf {(p.avg_confidence * 100)?.toFixed(0)}%</div>
+                    <div style={{ ...S.mono, fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      σ {p.std_dev?.toFixed(2)}%
+                    </div>
+                    <div style={{ ...S.mono, fontSize: '0.625rem', color: 'var(--text-muted)' }}>
+                      conf {(p.avg_confidence * 100)?.toFixed(0)}%
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </div>
+        </section>
       ))}
 
       {patterns.length === 0 && (
-        <div className="text-center py-16 text-gray-600">
-          <p className="text-4xl mb-3">◈</p>
-          <p>Nenhum padrão identificado. Execute o pattern matcher após o impact scoring.</p>
+        <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)' }}>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: '2rem', marginBottom: '8px' }}>≈</div>
+          <div style={{ fontSize: '0.8125rem' }}>No patterns detected yet. Run the impact scorer to build correlation data.</div>
         </div>
       )}
     </div>

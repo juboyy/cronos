@@ -1,1 +1,146 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600&family=Instrument+Serif&display=swap");
 @import "tailwindcss";
+
+:root {
+  /* ── Cronos Design Tokens ── */
+  --bg:             hsl(225 15% 3.5%);
+  --bg-surface:     hsl(225 12% 6%);
+  --bg-elevated:    hsl(225 10% 8.5%);
+  --bg-hover:       hsl(225 10% 11%);
+
+  --border:         hsl(225 10% 13%);
+  --border-subtle:  hsl(225 8% 9%);
+  --border-focus:   hsl(150 60% 42%);
+
+  --text-primary:   hsl(60 10% 92%);
+  --text-secondary: hsl(225 8% 58%);
+  --text-tertiary:  hsl(225 6% 38%);
+  --text-muted:     hsl(225 5% 26%);
+
+  --accent:         hsl(150 85% 44%);
+  --accent-dim:     hsl(150 50% 28%);
+  --accent-bg:      hsl(150 85% 44% / 0.07);
+
+  --signal-up:      hsl(155 70% 48%);
+  --signal-down:    hsl(0 72% 56%);
+  --signal-neutral: hsl(45 80% 58%);
+  --signal-info:    hsl(210 70% 58%);
+
+  --radius-sm:      2px;
+  --radius:         4px;
+  --radius-lg:      8px;
+
+  --font-display:   'Space Grotesk', system-ui, sans-serif;
+  --font-mono:      'IBM Plex Mono', ui-monospace, monospace;
+  --font-serif:     'Instrument Serif', Georgia, serif;
+}
+
+* { box-sizing: border-box; margin: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+}
+
+/* ── Typography ── */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+}
+
+.display { font-family: var(--font-serif); font-weight: 400; letter-spacing: -0.03em; }
+.mono { font-family: var(--font-mono); }
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ── Layout primitives ── */
+.surface {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.surface-elevated {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* ── Signal colors ── */
+.signal-up { color: var(--signal-up); }
+.signal-down { color: var(--signal-down); }
+.signal-neutral { color: var(--signal-neutral); }
+
+/* ── Data viz ── */
+.spark-container {
+  position: relative;
+  overflow: visible;
+}
+
+.score-ring {
+  transform-origin: center;
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ── Interactive states ── */
+.interactive {
+  transition: background 150ms ease, border-color 150ms ease;
+  cursor: pointer;
+}
+.interactive:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+/* ── Stagger entrance ── */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.stagger { animation: slideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.stagger:nth-child(1) { animation-delay: 0ms; }
+.stagger:nth-child(2) { animation-delay: 60ms; }
+.stagger:nth-child(3) { animation-delay: 120ms; }
+.stagger:nth-child(4) { animation-delay: 180ms; }
+.stagger:nth-child(5) { animation-delay: 240ms; }
+.stagger:nth-child(6) { animation-delay: 300ms; }
+.stagger:nth-child(7) { animation-delay: 360ms; }
+.stagger:nth-child(8) { animation-delay: 420ms; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Pulse dot ── */
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.pulse { animation: pulse-live 2s ease-in-out infinite; }
+
+/* ── Focus ring ── */
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+/* ── Link resets ── */
+a { color: inherit; text-decoration: none; }
+
+/* ── Selection ── */
+::selection {
+  background: hsl(150 85% 44% / 0.25);
+  color: var(--text-primary);
+}

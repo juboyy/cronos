@@ -1,226 +1,310 @@
 'use client';
-import { useState, useEffect } from 'react';
-import type { Simulation, Prediction, ScenarioCase } from '@/lib/types';
+import { useState, useEffect, useRef } from 'react';
 
-function DirectionIcon({ dir }: { dir: string }) {
-  if (dir === 'up') return <span className="text-emerald-400 text-lg">↑</span>;
-  if (dir === 'down') return <span className="text-red-400 text-lg">↓</span>;
-  return <span className="text-gray-400 text-lg">→</span>;
-}
-
-function ProbBar({ prob }: { prob: number }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="w-24 bg-gray-800 rounded-full h-2">
-        <div
-          className="bg-cyan-500 h-2 rounded-full"
-          style={{ width: `${prob * 100}%` }}
-        />
-      </div>
-      <span className="text-xs font-mono text-gray-400">{(prob * 100).toFixed(0)}%</span>
-    </div>
-  );
-}
+interface Simulation { id: string; scenario: string; tickers: string[]; status: string; result: any; created_at: string; }
 
 export default function SimulatePage() {
   const [scenario, setScenario] = useState('');
   const [tickers, setTickers] = useState('');
   const [loading, setLoading] = useState(false);
   const [simulations, setSimulations] = useState<Simulation[]>([]);
-  const [selected, setSelected] = useState<Simulation | null>(null);
+  const [active, setActive] = useState<Simulation | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    fetch('/api/cronos/simulate')
-      .then((r) => r.json())
-      .then(setSimulations)
-      .catch(console.error);
+    fetch('/api/cronos/simulate').then(r => r.json()).then(setSimulations).catch(() => {});
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!scenario.trim()) return;
+    if (!scenario.trim() || loading) return;
     setLoading(true);
-
     try {
-      const res = await fetch('/api/cronos/simulate', {
+      await fetch('/api/cronos/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scenario,
-          tickers: tickers.split(',').map((t) => t.trim()).filter(Boolean),
+          tickers: tickers.split(',').map(t => t.trim()).filter(Boolean),
           config: { agents: 50, rounds: 3 },
         }),
       });
-      const data = await res.json();
-
-      // Refresh list
-      const listRes = await fetch('/api/cronos/simulate');
-      setSimulations(await listRes.json());
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+      const list = await fetch('/api/cronos/simulate').then(r => r.json());
+      setSimulations(list);
       setScenario('');
-    }
+      setTickers('');
+    } finally { setLoading(false); }
   };
 
-  const result = selected?.result;
+  const r = active?.result;
+
+  const S = {
+    label: { fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' as const },
+    mono: { fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' as const },
+  };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-      <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold text-gray-200 tracking-tight">Simulações</h1>
-          <span className="text-[10px] text-purple-600 border border-purple-800/50 rounded px-1.5 py-0.5">
-            MiroFish
-          </span>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px' }}>
+        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.75rem', fontWeight: 400, color: 'var(--text-primary)' }}>Simulate</h1>
+        <span style={{ ...S.label }}>MiroFish Swarm Engine</span>
+      </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="border border-gray-800/60 rounded-lg p-4 bg-[#0d0d14] space-y-3">
-          <div>
-            <label className="text-[10px] text-gray-500 uppercase tracking-widest block mb-1">Cenário</label>
-            <textarea
-              value={scenario}
-              onChange={(e) => setScenario(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:border-cyan-700 focus:outline-none resize-none"
-              placeholder="Ex: Petrobras anuncia dividendos extraordinários de R$10 bilhões..."
-              rows={3}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-gray-500 uppercase tracking-widest block mb-1">Tickers (opcional)</label>
-            <input
-              value={tickers}
-              onChange={(e) => setTickers(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:border-cyan-700 focus:outline-none"
-              placeholder="PETR4, VALE3, ITUB4"
-            />
-          </div>
+      {/* ── INPUT ── */}
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ position: 'relative' }}>
+          <textarea
+            ref={textareaRef}
+            value={scenario}
+            onChange={e => setScenario(e.target.value)}
+            placeholder="Descreva um cenário financeiro para simular..."
+            rows={3}
+            style={{
+              width: '100%',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              padding: '14px 16px',
+              color: 'var(--text-primary)',
+              fontSize: '0.875rem',
+              fontFamily: 'var(--font-display)',
+              resize: 'none',
+              outline: 'none',
+              transition: 'border-color 150ms',
+            }}
+            onFocus={e => e.target.style.borderColor = 'var(--accent-dim)'}
+            onBlur={e => e.target.style.borderColor = 'var(--border)'}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <input
+            value={tickers}
+            onChange={e => setTickers(e.target.value)}
+            placeholder="Tickers: PETR4, VALE3, ITUB4"
+            style={{
+              flex: 1,
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              padding: '10px 14px',
+              color: 'var(--text-primary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.8125rem',
+              outline: 'none',
+            }}
+          />
           <button
             type="submit"
             disabled={loading || !scenario.trim()}
-            className="px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:bg-gray-700 disabled:text-gray-500 rounded text-sm text-white transition-colors"
+            style={{
+              padding: '10px 24px',
+              background: loading ? 'var(--bg-elevated)' : 'var(--accent)',
+              color: loading ? 'var(--text-muted)' : 'hsl(225 15% 4%)',
+              border: 'none',
+              borderRadius: 'var(--radius)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              letterSpacing: '0.04em',
+              cursor: loading ? 'wait' : 'pointer',
+              transition: 'all 150ms',
+              textTransform: 'uppercase',
+            }}
           >
-            {loading ? '◈ Simulando...' : '◈ Iniciar Simulação'}
+            {loading ? 'Simulando...' : 'Simular'}
           </button>
-        </form>
+        </div>
+      </form>
+
+      {/* ── LAYOUT ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '40px', alignItems: 'start' }}>
 
         {/* Results */}
-        {result && (
-          <div className="space-y-4">
-            {/* Predictions */}
-            <div className="border border-gray-800/60 rounded-lg p-4 bg-[#0d0d14]">
-              <h2 className="text-[10px] text-gray-500 uppercase tracking-widest mb-3">Previsões</h2>
-              <div className="space-y-3">
-                {result.predictions?.map((pred: Prediction, i: number) => (
-                  <div key={i} className="flex items-center gap-3 p-3 bg-gray-900/50 rounded">
-                    <DirectionIcon dir={pred.direction} />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-cyan-400 font-mono text-sm font-bold">{pred.ticker}</span>
-                        <span className="text-[10px] text-gray-500">{pred.timeframe}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                          pred.magnitude === 'large' ? 'bg-red-900/50 text-red-400' :
-                          pred.magnitude === 'moderate' ? 'bg-amber-900/50 text-amber-400' :
-                          'bg-gray-800 text-gray-400'
-                        }`}>{pred.magnitude}</span>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1">{pred.reasoning}</p>
-                    </div>
-                    <ProbBar prob={pred.probability} />
-                  </div>
-                ))}
-              </div>
-            </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+          {r ? (
+            <>
+              {/* Predictions */}
+              {r.predictions?.length > 0 && (
+                <section>
+                  <div style={{ ...S.label, marginBottom: '14px' }}>Predictions</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {r.predictions.map((p: any, i: number) => (
+                      <div
+                        key={i}
+                        className="stagger"
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '32px 70px 1fr 100px',
+                          gap: '14px',
+                          alignItems: 'center',
+                          padding: '12px 16px',
+                          background: 'var(--bg-surface)',
+                          border: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        {/* Direction */}
+                        <span style={{ fontSize: '1.25rem', color: p.direction === 'up' ? 'var(--signal-up)' : p.direction === 'down' ? 'var(--signal-down)' : 'var(--text-tertiary)', textAlign: 'center' }}>
+                          {p.direction === 'up' ? '↑' : p.direction === 'down' ? '↓' : '→'}
+                        </span>
 
-            {/* Scenarios */}
-            <div className="border border-gray-800/60 rounded-lg p-4 bg-[#0d0d14]">
-              <h2 className="text-[10px] text-gray-500 uppercase tracking-widest mb-3">Cenários</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {result.scenarios?.map((sc: ScenarioCase, i: number) => (
-                  <div key={i} className="p-3 bg-gray-900/50 rounded border border-gray-800/30">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-bold text-gray-200">{sc.name}</span>
-                      <span className="text-xs font-mono text-cyan-400">{(sc.probability * 100).toFixed(0)}%</span>
+                        {/* Ticker */}
+                        <div>
+                          <div style={{ ...S.mono, fontSize: '0.8125rem', color: 'var(--text-primary)', fontWeight: 600 }}>{p.ticker}</div>
+                          <div style={{ ...S.mono, fontSize: '0.5625rem', color: 'var(--text-muted)' }}>{p.timeframe}</div>
+                        </div>
+
+                        {/* Reasoning */}
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{p.reasoning}</div>
+
+                        {/* Probability */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+                          <span style={{ ...S.mono, fontSize: '0.8125rem', color: 'var(--text-primary)' }}>{(p.probability * 100).toFixed(0)}%</span>
+                          <div style={{ width: '80px', height: '3px', background: 'var(--border-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
+                            <div style={{ width: `${p.probability * 100}%`, height: '100%', background: 'var(--accent)', borderRadius: '2px' }} />
+                          </div>
+                          <span style={{ ...S.mono, fontSize: '0.5625rem', color: p.magnitude === 'large' ? 'var(--signal-down)' : p.magnitude === 'moderate' ? 'var(--signal-neutral)' : 'var(--text-muted)' }}>
+                            {p.magnitude}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Scenarios */}
+              {r.scenarios?.length > 0 && (
+                <section>
+                  <div style={{ ...S.label, marginBottom: '14px' }}>Scenario Analysis</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(r.scenarios.length, 3)}, 1fr)`, gap: '2px' }}>
+                    {r.scenarios.map((sc: any, i: number) => (
+                      <div
+                        key={i}
+                        className="stagger"
+                        style={{
+                          padding: '20px',
+                          background: 'var(--bg-surface)',
+                          border: '1px solid var(--border-subtle)',
+                          borderTop: `2px solid ${
+                            sc.name.toLowerCase().includes('bull') ? 'var(--signal-up)' :
+                            sc.name.toLowerCase().includes('bear') ? 'var(--signal-down)' :
+                            'var(--signal-neutral)'
+                          }`,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.875rem', color: 'var(--text-primary)', fontWeight: 500 }}>{sc.name}</span>
+                          <span style={{ ...S.mono, fontSize: '0.8125rem', color: 'var(--accent)' }}>{(sc.probability * 100).toFixed(0)}%</span>
+                        </div>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{sc.description}</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          {sc.catalysts?.map((c: string, j: number) => (
+                            <div key={j} style={{ display: 'flex', gap: '6px', alignItems: 'baseline', fontSize: '0.6875rem', color: 'var(--text-tertiary)' }}>
+                              <span style={{ color: 'var(--accent-dim)', flexShrink: 0 }}>→</span>
+                              <span>{c}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Agent Dynamics */}
+              {r.agent_interactions && (
+                <section style={{ padding: '20px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)' }}>
+                  <div style={{ ...S.label, marginBottom: '14px' }}>Agent Dynamics</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    <div>
+                      <div style={{ ...S.label, marginBottom: '4px' }}>Consensus</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ ...S.mono, fontSize: '1.25rem', color: 'var(--text-primary)' }}>{(r.agent_interactions.consensus_level * 100).toFixed(0)}%</span>
+                        <div style={{ flex: 1, height: '3px', background: 'var(--border-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
+                          <div style={{ width: `${r.agent_interactions.consensus_level * 100}%`, height: '100%', background: 'var(--accent)' }} />
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-400 mb-2">{sc.description}</p>
-                    <div className="space-y-1">
-                      {sc.catalysts?.map((c, j) => (
-                        <div key={j} className="text-[10px] text-gray-500 flex items-center gap-1">
-                          <span className="text-cyan-700">→</span> {c}
+                    <div>
+                      <div style={{ ...S.label, marginBottom: '4px' }}>Most Influential</div>
+                      <span style={{ ...S.mono, fontSize: '0.875rem', color: 'var(--text-primary)' }}>{r.agent_interactions.most_influential}</span>
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <div style={{ ...S.label, marginBottom: '8px' }}>Key Debate Points</div>
+                      {r.agent_interactions.key_debate_points?.map((p: string, i: number) => (
+                        <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'baseline', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                          <span style={{ color: 'var(--signal-neutral)', flexShrink: 0, ...S.mono, fontSize: '0.625rem' }}>{String(i + 1).padStart(2, '0')}</span>
+                          <span>{p}</span>
                         </div>
                       ))}
                     </div>
                   </div>
-                ))}
-              </div>
+                </section>
+              )}
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)' }}>
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: '2rem', marginBottom: '8px' }}>◇</div>
+              <div style={{ fontSize: '0.8125rem' }}>Selecione uma simulação ou crie uma nova.</div>
             </div>
+          )}
+        </div>
 
-            {/* Agent Interactions */}
-            {result.agent_interactions && (
-              <div className="border border-gray-800/60 rounded-lg p-4 bg-[#0d0d14]">
-                <h2 className="text-[10px] text-gray-500 uppercase tracking-widest mb-3">Dinâmica dos Agentes</h2>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-[10px] text-gray-500 block">Consenso</span>
-                    <span className="text-cyan-400 font-mono">{(result.agent_interactions.consensus_level * 100).toFixed(0)}%</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-gray-500 block">Mais influente</span>
-                    <span className="text-gray-200">{result.agent_interactions.most_influential}</span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-[10px] text-gray-500 block mb-1">Pontos-chave do debate</span>
-                    {result.agent_interactions.key_debate_points?.map((p: string, i: number) => (
-                      <div key={i} className="text-xs text-gray-400 flex items-start gap-1 mb-1">
-                        <span className="text-amber-700 mt-0.5">•</span> {p}
-                      </div>
-                    ))}
-                  </div>
+        {/* History sidebar */}
+        <aside style={{ display: 'flex', flexDirection: 'column', gap: '4px', position: 'sticky', top: '68px' }}>
+          <div style={{ ...S.label, marginBottom: '8px' }}>History</div>
+          {simulations.map(sim => (
+            <button
+              key={sim.id}
+              onClick={() => setActive(sim)}
+              className="interactive"
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                padding: '10px 12px',
+                background: active?.id === sim.id ? 'var(--bg-elevated)' : 'transparent',
+                border: active?.id === sim.id ? '1px solid var(--border)' : '1px solid transparent',
+                borderRadius: 'var(--radius)',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{
+                  ...S.mono,
+                  fontSize: '0.5625rem',
+                  padding: '1px 5px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: sim.status === 'completed' ? 'hsl(150 50% 50% / 0.12)' : sim.status === 'pending' ? 'hsl(45 80% 50% / 0.12)' : 'hsl(0 60% 50% / 0.12)',
+                  color: sim.status === 'completed' ? 'var(--signal-up)' : sim.status === 'pending' ? 'var(--signal-neutral)' : 'var(--signal-down)',
+                }}>
+                  {sim.status}
+                </span>
+                <span style={{ ...S.mono, fontSize: '0.5625rem', color: 'var(--text-muted)' }}>
+                  {new Date(sim.created_at).toLocaleDateString('pt-BR')}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.4 }}>
+                {sim.scenario}
+              </div>
+              {sim.tickers?.length > 0 && (
+                <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  {sim.tickers.map(t => (
+                    <span key={t} style={{ ...S.mono, fontSize: '0.5625rem', color: 'var(--text-tertiary)', padding: '1px 4px', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>{t}</span>
+                  ))}
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Sidebar: History */}
-      <aside className="space-y-3">
-        <h2 className="text-[10px] text-gray-500 uppercase tracking-widest">Histórico</h2>
-        {simulations.map((sim) => (
-          <button
-            key={sim.id}
-            onClick={() => setSelected(sim)}
-            className={`w-full text-left p-3 rounded border transition-colors ${
-              selected?.id === sim.id
-                ? 'border-purple-700 bg-purple-900/20'
-                : 'border-gray-800/40 bg-[#0d0d14] hover:border-gray-700'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                sim.status === 'completed' ? 'bg-emerald-900/50 text-emerald-400' :
-                sim.status === 'pending' ? 'bg-amber-900/50 text-amber-400' :
-                sim.status === 'failed' ? 'bg-red-900/50 text-red-400' :
-                'bg-gray-800 text-gray-400'
-              }`}>{sim.status}</span>
-              <span className="text-[10px] text-gray-600">{new Date(sim.created_at).toLocaleDateString('pt-BR')}</span>
+              )}
+            </button>
+          ))}
+          {simulations.length === 0 && (
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', padding: '20px 0' }}>
+              Nenhuma simulação.
             </div>
-            <p className="text-xs text-gray-300 line-clamp-2">{sim.scenario}</p>
-            {sim.tickers?.length > 0 && (
-              <div className="flex gap-1 mt-1.5 flex-wrap">
-                {sim.tickers.map((t) => (
-                  <span key={t} className="text-[10px] text-cyan-600 bg-cyan-900/20 rounded px-1">{t}</span>
-                ))}
-              </div>
-            )}
-          </button>
-        ))}
-        {simulations.length === 0 && (
-          <p className="text-xs text-gray-600 text-center py-4">Nenhuma simulação ainda.</p>
-        )}
-      </aside>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

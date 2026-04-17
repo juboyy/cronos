@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
-import type { Alert } from '@/lib/types';
+
+interface Alert { id: string; name: string; type: string; conditions: Record<string, any>; channels: string[]; active: boolean; last_triggered: string | null; trigger_count: number; cooldown_minutes: number; }
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -8,13 +9,12 @@ export default function AlertsPage() {
   const [form, setForm] = useState({ name: '', type: 'sentiment', ticker: '', threshold: '-0.3' });
 
   useEffect(() => {
-    fetch('/api/cronos/alerts').then(r => r.json()).then(setAlerts).catch(console.error);
+    fetch('/api/cronos/alerts').then(r => r.json()).then(setAlerts).catch(() => {});
   }, []);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const create = async (e: React.FormEvent) => {
     e.preventDefault();
     const conditions: Record<string, any> = { ticker: form.ticker };
-    
     if (form.type === 'sentiment') conditions.sentiment_below = parseFloat(form.threshold);
     if (form.type === 'volume') conditions.volume_above = parseFloat(form.threshold);
     if (form.type === 'price') conditions.delta_above = parseFloat(form.threshold);
@@ -22,97 +22,188 @@ export default function AlertsPage() {
     await fetch('/api/cronos/alerts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: form.name,
-        type: form.type,
-        conditions,
-        channels: ['dashboard', 'telegram'],
-      }),
+      body: JSON.stringify({ name: form.name, type: form.type, conditions, channels: ['dashboard', 'telegram'] }),
     });
 
-    const res = await fetch('/api/cronos/alerts');
-    setAlerts(await res.json());
+    setAlerts(await fetch('/api/cronos/alerts').then(r => r.json()));
     setShowForm(false);
     setForm({ name: '', type: 'sentiment', ticker: '', threshold: '-0.3' });
   };
 
+  const S = {
+    label: { fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' as const },
+    mono: { fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' as const },
+    input: {
+      width: '100%',
+      background: 'var(--bg-surface)',
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--radius)',
+      padding: '10px 14px',
+      color: 'var(--text-primary)',
+      fontFamily: 'var(--font-display)',
+      fontSize: '0.8125rem',
+      outline: 'none',
+    },
+  };
+
+  const typeAccents: Record<string, string> = {
+    sentiment: 'hsl(280 50% 55%)',
+    volume: 'hsl(45 75% 50%)',
+    price: 'hsl(0 65% 50%)',
+    pattern: 'hsl(210 60% 55%)',
+    composite: 'hsl(150 60% 45%)',
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold text-gray-200 tracking-tight">Alertas</h1>
-          <span className="text-[10px] text-red-600 border border-red-800/50 rounded px-1.5 py-0.5">
-            {alerts.filter(a => a.active).length} ativos
-          </span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <div>
+          <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.75rem', fontWeight: 400, color: 'var(--text-primary)', marginBottom: '8px' }}>Alerts</h1>
+          <p style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)' }}>
+            {alerts.filter(a => a.active).length} active monitors
+          </p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="px-3 py-1.5 bg-cyan-800 hover:bg-cyan-700 rounded text-xs text-white transition-colors"
+          style={{
+            padding: '8px 20px',
+            background: showForm ? 'var(--bg-elevated)' : 'var(--accent)',
+            color: showForm ? 'var(--text-secondary)' : 'hsl(225 15% 4%)',
+            border: showForm ? '1px solid var(--border)' : 'none',
+            borderRadius: 'var(--radius)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.6875rem',
+            fontWeight: 600,
+            letterSpacing: '0.04em',
+            cursor: 'pointer',
+            textTransform: 'uppercase',
+          }}
         >
-          + Novo Alerta
+          {showForm ? 'Cancel' : '+ New Alert'}
         </button>
       </div>
 
+      {/* ── CREATE FORM ── */}
       {showForm && (
-        <form onSubmit={handleCreate} className="border border-gray-800/60 rounded-lg p-4 bg-[#0d0d14] space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] text-gray-500 uppercase tracking-widest block mb-1">Nome</label>
-              <input value={form.name} onChange={e => setForm({...form, name: e.target.value})}
-                className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm text-gray-200 focus:border-cyan-700 focus:outline-none"
-                placeholder="PETR4 Sentimento Negativo" />
-            </div>
-            <div>
-              <label className="text-[10px] text-gray-500 uppercase tracking-widest block mb-1">Tipo</label>
-              <select value={form.type} onChange={e => setForm({...form, type: e.target.value})}
-                className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm text-gray-200 focus:border-cyan-700 focus:outline-none">
-                <option value="sentiment">Sentimento</option>
-                <option value="volume">Volume</option>
-                <option value="price">Variação Preço</option>
-                <option value="pattern">Padrão</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-gray-500 uppercase tracking-widest block mb-1">Ticker</label>
-              <input value={form.ticker} onChange={e => setForm({...form, ticker: e.target.value})}
-                className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm text-gray-200 focus:border-cyan-700 focus:outline-none"
-                placeholder="PETR4" />
-            </div>
-            <div>
-              <label className="text-[10px] text-gray-500 uppercase tracking-widest block mb-1">Threshold</label>
-              <input value={form.threshold} onChange={e => setForm({...form, threshold: e.target.value})}
-                className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm text-gray-200 focus:border-cyan-700 focus:outline-none"
-                placeholder="-0.3" />
-            </div>
+        <form
+          onSubmit={create}
+          className="stagger"
+          style={{
+            padding: '24px',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '16px',
+          }}
+        >
+          <div>
+            <label style={{ ...S.label, display: 'block', marginBottom: '6px' }}>Name</label>
+            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="PETR4 Sentiment Drop" style={S.input} />
           </div>
-          <button type="submit" className="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 rounded text-sm text-white transition-colors">
-            Criar Alerta
-          </button>
+          <div>
+            <label style={{ ...S.label, display: 'block', marginBottom: '6px' }}>Type</label>
+            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} style={{ ...S.input, fontFamily: 'var(--font-mono)' }}>
+              <option value="sentiment">Sentiment</option>
+              <option value="volume">Volume Spike</option>
+              <option value="price">Price Delta</option>
+              <option value="pattern">Pattern Match</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ ...S.label, display: 'block', marginBottom: '6px' }}>Ticker</label>
+            <input value={form.ticker} onChange={e => setForm({ ...form, ticker: e.target.value })} placeholder="PETR4" style={{ ...S.input, fontFamily: 'var(--font-mono)' }} />
+          </div>
+          <div>
+            <label style={{ ...S.label, display: 'block', marginBottom: '6px' }}>Threshold</label>
+            <input value={form.threshold} onChange={e => setForm({ ...form, threshold: e.target.value })} placeholder="-0.3" style={{ ...S.input, fontFamily: 'var(--font-mono)' }} />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <button
+              type="submit"
+              style={{
+                padding: '10px 28px',
+                background: 'var(--accent)',
+                color: 'hsl(225 15% 4%)',
+                border: 'none',
+                borderRadius: 'var(--radius)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+              }}
+            >
+              Create Alert
+            </button>
+          </div>
         </form>
       )}
 
-      <div className="space-y-3">
-        {alerts.map(alert => (
-          <div key={alert.id} className={`border rounded-lg p-4 bg-[#0d0d14] ${alert.active ? 'border-gray-800/60' : 'border-gray-800/30 opacity-50'}`}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${alert.active ? 'bg-emerald-500' : 'bg-gray-600'}`} />
-                <span className="text-sm text-gray-200 font-medium">{alert.name}</span>
-                <span className="text-[10px] text-cyan-600 bg-cyan-900/20 rounded px-1.5 py-0.5">{alert.type}</span>
+      {/* ── ALERT LIST ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        {alerts.map((alert) => {
+          const accent = typeAccents[alert.type] || 'var(--text-tertiary)';
+          return (
+            <div
+              key={alert.id}
+              className="interactive"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '10px 1fr 120px 80px',
+                gap: '16px',
+                alignItems: 'center',
+                padding: '14px 16px',
+                borderBottom: '1px solid var(--border-subtle)',
+                opacity: alert.active ? 1 : 0.4,
+              }}
+            >
+              {/* Status indicator */}
+              <span
+                className={alert.active ? 'pulse' : ''}
+                style={{
+                  width: 6, height: 6,
+                  borderRadius: '50%',
+                  background: alert.active ? 'var(--signal-up)' : 'var(--text-muted)',
+                }}
+              />
+
+              {/* Info */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                  <span style={{ fontSize: '0.875rem', color: 'var(--text-primary)', fontWeight: 500 }}>{alert.name}</span>
+                  <span style={{ ...S.mono, fontSize: '0.5625rem', color: accent, padding: '1px 6px', border: `1px solid ${accent}33`, borderRadius: 'var(--radius-sm)' }}>
+                    {alert.type}
+                  </span>
+                </div>
+                <div style={{ ...S.mono, fontSize: '0.625rem', color: 'var(--text-muted)' }}>
+                  {Object.entries(alert.conditions).map(([k, v]) => `${k}: ${v}`).join(' · ')}
+                </div>
               </div>
-              <span className="text-[10px] text-gray-600">disparado {alert.trigger_count}x</span>
+
+              {/* Channels */}
+              <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                {alert.channels?.map(ch => (
+                  <span key={ch} style={{ ...S.mono, fontSize: '0.5625rem', color: 'var(--text-tertiary)', padding: '1px 5px', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
+                    {ch}
+                  </span>
+                ))}
+              </div>
+
+              {/* Trigger count */}
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ ...S.mono, fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>{alert.trigger_count}</span>
+                <span style={{ ...S.mono, fontSize: '0.5625rem', color: 'var(--text-muted)', marginLeft: '4px' }}>triggers</span>
+              </div>
             </div>
-            <div className="flex items-center gap-4 text-xs text-gray-500">
-              <span>Condições: {JSON.stringify(alert.conditions)}</span>
-              <span>Canais: {alert.channels?.join(', ')}</span>
-              <span>Cooldown: {alert.cooldown_minutes}min</span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
+
         {alerts.length === 0 && (
-          <div className="text-center py-12 text-gray-600">
-            <p className="text-4xl mb-3">🔔</p>
-            <p>Nenhum alerta configurado. Crie seu primeiro acima.</p>
+          <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)' }}>
+            <div style={{ fontFamily: 'var(--font-serif)', fontSize: '2rem', marginBottom: '8px' }}>◇</div>
+            <div style={{ fontSize: '0.8125rem' }}>No alerts configured. Create one to start monitoring.</div>
           </div>
         )}
       </div>

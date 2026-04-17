@@ -1,138 +1,185 @@
 import { supabaseQuery } from '@/lib/supabase';
-import type { Impact } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
-async function getImpacts() {
-  return supabaseQuery(
-    'cronos_impacts',
-    'select=*,cronos_articles(title,source,published_at)&order=impact_score.desc&limit=50'
-  );
+async function getData() {
+  const [impacts, prices] = await Promise.all([
+    supabaseQuery('cronos_impacts', 'select=*,cronos_articles(title,source,published_at)&order=impact_score.desc&limit=40'),
+    supabaseQuery('cronos_prices', 'select=ticker,date,close,volume&order=date.desc&limit=100'),
+  ]);
+
+  // Aggregate by ticker
+  const tickerAgg: Record<string, { count: number; totalScore: number; totalDelta: number; volAnomalies: number }> = {};
+  for (const imp of impacts) {
+    if (!tickerAgg[imp.ticker]) tickerAgg[imp.ticker] = { count: 0, totalScore: 0, totalDelta: 0, volAnomalies: 0 };
+    tickerAgg[imp.ticker].count++;
+    tickerAgg[imp.ticker].totalScore += imp.impact_score || 0;
+    tickerAgg[imp.ticker].totalDelta += imp.delta_1d || 0;
+    if (imp.volume_anomaly) tickerAgg[imp.ticker].volAnomalies++;
+  }
+
+  const ranked = Object.entries(tickerAgg)
+    .map(([ticker, d]) => ({ ticker, ...d, avgScore: d.totalScore / d.count, avgDelta: d.totalDelta / d.count }))
+    .sort((a, b) => b.avgScore - a.avgScore)
+    .slice(0, 15);
+
+  return { impacts, ranked };
 }
 
-async function getTopTickers() {
-  return supabaseQuery(
-    'cronos_impacts',
-    'select=ticker,impact_score&order=impact_score.desc&limit=100'
-  );
-}
-
-function ScoreBar({ score }: { score: number }) {
+function ImpactBar({ score }: { score: number }) {
   const w = Math.min(score * 100, 100);
-  const color = score > 0.7 ? 'bg-red-500' : score > 0.4 ? 'bg-amber-500' : 'bg-cyan-600';
+  const color = score > 0.6 ? 'var(--signal-down)' : score > 0.35 ? 'var(--signal-neutral)' : 'var(--accent)';
   return (
-    <div className="w-full bg-gray-800 rounded-full h-1.5">
-      <div className={`${color} h-1.5 rounded-full transition-all`} style={{ width: `${w}%` }} />
+    <div style={{ width: '80px', height: '3px', background: 'var(--border-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
+      <div style={{ width: `${w}%`, height: '100%', background: color, borderRadius: '2px', transition: 'width 0.6s ease' }} />
     </div>
   );
 }
 
-function DeltaBadge({ delta }: { delta: number | null }) {
-  if (delta === null || delta === undefined) return <span className="text-gray-600 text-xs">—</span>;
-  const color = delta > 0 ? 'text-emerald-400' : delta < 0 ? 'text-red-400' : 'text-gray-400';
-  return <span className={`text-xs font-mono ${color}`}>{delta > 0 ? '+' : ''}{delta.toFixed(2)}%</span>;
+function Delta({ value }: { value: number | null }) {
+  if (value === null || value === undefined) return <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>—</span>;
+  const color = value > 0 ? 'var(--signal-up)' : value < 0 ? 'var(--signal-down)' : 'var(--text-tertiary)';
+  return (
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color, fontVariantNumeric: 'tabular-nums' }}>
+      {value > 0 ? '+' : ''}{value.toFixed(2)}%
+    </span>
+  );
 }
 
 export default async function ImpactPage() {
-  const [impacts, tickerData] = await Promise.all([getImpacts(), getTopTickers()]);
-
-  // Aggregate by ticker for heatmap
-  const tickerMap: Record<string, { count: number; avgScore: number; totalDelta: number }> = {};
-  for (const t of tickerData) {
-    if (!tickerMap[t.ticker]) tickerMap[t.ticker] = { count: 0, avgScore: 0, totalDelta: 0 };
-    tickerMap[t.ticker].count++;
-    tickerMap[t.ticker].avgScore += t.impact_score || 0;
-  }
-  const tickers = Object.entries(tickerMap)
-    .map(([ticker, d]) => ({ ticker, count: d.count, avgScore: d.avgScore / d.count }))
-    .sort((a, b) => b.avgScore - a.avgScore)
-    .slice(0, 20);
+  const { impacts, ranked } = await getData();
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <h1 className="text-lg font-bold text-gray-200 tracking-tight">Impacto</h1>
-        <span className="text-[10px] text-amber-600 border border-amber-800/50 rounded px-1.5 py-0.5">
-          {impacts.length} correlações
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px' }}>
+        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.75rem', fontWeight: 400 }}>Impact Analysis</h1>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)' }}>
+          {impacts.length} correlações computadas
         </span>
       </div>
 
-      {/* Heatmap */}
-      <div className="border border-gray-800/60 rounded-lg p-4 bg-[#0d0d14]">
-        <h2 className="text-[10px] text-gray-500 uppercase tracking-widest mb-3">Heatmap — Score por Ticker</h2>
-        <div className="flex flex-wrap gap-2">
-          {tickers.map((t) => {
-            const intensity = Math.min(t.avgScore * 1.5, 1);
-            const bg = t.avgScore > 0.5
-              ? `rgba(239, 68, 68, ${intensity})`
-              : t.avgScore > 0.3
-                ? `rgba(245, 158, 11, ${intensity})`
-                : `rgba(6, 182, 212, ${intensity * 0.7})`;
-            return (
-              <a
-                key={t.ticker}
-                href={`/entity/${t.ticker}`}
-                className="px-3 py-2 rounded text-xs font-mono transition-transform hover:scale-105"
-                style={{ backgroundColor: bg }}
-              >
-                <div className="text-white font-bold">{t.ticker}</div>
-                <div className="text-white/70 text-[10px]">{t.avgScore.toFixed(2)} ({t.count})</div>
-              </a>
-            );
-          })}
-        </div>
-      </div>
+      {/* ── ENTITY IMPACT RANKING ── */}
+      {ranked.length > 0 && (
+        <section>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>
+            Entity Ranking — Exposure Index
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '2px' }}>
+            {ranked.map((r, i) => {
+              const intensity = Math.min(r.avgScore * 1.2, 1);
+              const barH = Math.max(20, Math.min(intensity * 80, 80));
+              return (
+                <div
+                  key={r.ticker}
+                  className="stagger interactive"
+                  style={{
+                    padding: '16px',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-subtle)',
+                    borderTop: `2px solid hsl(${r.avgScore > 0.5 ? 0 : r.avgScore > 0.3 ? 45 : 150} ${intensity * 70 + 20}% 50%)`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', color: 'var(--text-primary)', fontWeight: 600 }}>{r.ticker}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>{r.avgScore.toFixed(3)}</span>
+                  </div>
 
-      {/* Impact Table */}
-      <div className="border border-gray-800/60 rounded-lg bg-[#0d0d14] overflow-hidden">
-        <div className="p-4 border-b border-gray-800/40">
-          <h2 className="text-[10px] text-gray-500 uppercase tracking-widest">Top Impactos — Notícia × Preço</h2>
+                  {/* Mini bar viz */}
+                  <div style={{ height: '3px', background: 'var(--border-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{ width: `${intensity * 100}%`, height: '100%', background: `hsl(${r.avgScore > 0.5 ? 0 : r.avgScore > 0.3 ? 45 : 150} 60% 50%)`, transition: 'width 0.6s ease' }} />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)' }}>
+                    <span>{r.count} eventos</span>
+                    {r.volAnomalies > 0 && <span style={{ color: 'var(--signal-down)' }}>{r.volAnomalies} vol alerts</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ── IMPACT TABLE ── */}
+      <section>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>
+          Event → Price Correlation
         </div>
-        <div className="divide-y divide-gray-800/30">
-          {impacts.map((imp: Impact) => (
-            <div key={imp.id} className="px-4 py-3 hover:bg-gray-800/20 transition-colors">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-cyan-400 font-mono text-xs font-bold">{imp.ticker}</span>
-                    <span className="text-gray-600 text-[10px]">{imp.cronos_articles?.source}</span>
-                    {imp.volume_anomaly && (
-                      <span className="text-[10px] text-red-400 border border-red-800/50 rounded px-1">VOL ⚠</span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-300 truncate">{imp.cronos_articles?.title}</p>
-                  <div className="flex items-center gap-4 mt-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-gray-600">Δ1d:</span>
-                      <DeltaBadge delta={imp.delta_1d} />
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-gray-600">Δ5d:</span>
-                      <DeltaBadge delta={imp.delta_5d} />
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-gray-600">Vol:</span>
-                      <span className="text-xs font-mono text-gray-400">{imp.volume_ratio?.toFixed(1)}x</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right shrink-0 w-20">
-                  <div className="text-sm font-mono text-amber-400 font-bold">{imp.impact_score?.toFixed(3)}</div>
-                  <ScoreBar score={imp.impact_score} />
-                  <div className="text-[10px] text-gray-600 mt-1">conf: {imp.confidence?.toFixed(0)}%</div>
-                </div>
+
+        {/* Table header */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '60px 1fr 70px 70px 50px 80px 50px',
+            gap: '12px',
+            padding: '8px 16px',
+            borderBottom: '1px solid var(--border)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.5625rem',
+            color: 'var(--text-muted)',
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+          }}
+        >
+          <span>Ticker</span>
+          <span>Headline</span>
+          <span style={{ textAlign: 'right' }}>Δ 1d</span>
+          <span style={{ textAlign: 'right' }}>Δ 5d</span>
+          <span style={{ textAlign: 'right' }}>Vol</span>
+          <span>Score</span>
+          <span style={{ textAlign: 'right' }}>Conf</span>
+        </div>
+
+        {impacts.map((imp: any, i: number) => (
+          <div
+            key={imp.id}
+            className="interactive stagger"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '60px 1fr 70px 70px 50px 80px 50px',
+              gap: '12px',
+              padding: '10px 16px',
+              borderBottom: '1px solid var(--border-subtle)',
+              alignItems: 'center',
+            }}
+          >
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+              {imp.ticker}
+            </span>
+            <div style={{ overflow: 'hidden' }}>
+              <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {imp.cronos_articles?.title || '—'}
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                {imp.cronos_articles?.source} · {imp.cronos_articles?.published_at ? new Date(imp.cronos_articles.published_at).toLocaleDateString('pt-BR') : ''}
               </div>
             </div>
-          ))}
-        </div>
-      </div>
+            <div style={{ textAlign: 'right' }}><Delta value={imp.delta_1d} /></div>
+            <div style={{ textAlign: 'right' }}><Delta value={imp.delta_5d} /></div>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: imp.volume_anomaly ? 'var(--signal-down)' : 'var(--text-tertiary)' }}>
+                {imp.volume_ratio?.toFixed(1)}x
+              </span>
+            </div>
+            <ImpactBar score={imp.impact_score} />
+            <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
+              {(imp.confidence * 100).toFixed(0)}%
+            </div>
+          </div>
+        ))}
 
-      {impacts.length === 0 && (
-        <div className="text-center py-16 text-gray-600">
-          <p className="text-4xl mb-3">◈</p>
-          <p>Nenhum impacto calculado. Execute o impact scorer primeiro.</p>
-        </div>
-      )}
+        {impacts.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)' }}>
+            <div style={{ fontFamily: 'var(--font-serif)', fontSize: '2rem', marginBottom: '8px' }}>∅</div>
+            <div style={{ fontSize: '0.8125rem' }}>Nenhum impacto calculado. Execute o pipeline com --impact.</div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
