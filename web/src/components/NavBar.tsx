@@ -92,6 +92,24 @@ export function NavBar() {
               {n.label}
             </a>
           ))}
+          <button
+            onClick={async () => { await fetch('/api/auth', { method: 'DELETE' }); window.location.href = '/login'; }}
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.5625rem',
+              color: 'var(--text-muted)',
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              padding: '4px 8px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'none',
+              border: '1px solid var(--border-subtle)',
+              cursor: 'pointer',
+              marginLeft: '8px',
+            }}
+          >
+            Sair
+          </button>
         </nav>
 
         {/* Mobile hamburger */}
