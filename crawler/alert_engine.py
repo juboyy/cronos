@@ -173,6 +173,19 @@ def run_alert_engine():
                 'delivered_to': alert.get('channels', ['dashboard']),
             })
             
+            # Create in-app notification
+            ticker = alert.get('conditions', {}).get('ticker', '')
+            severity_map = {'sentiment': 'warning', 'volume': 'warning', 'price': 'critical', 'pattern': 'info'}
+            _insert('cronos_notifications', {
+                'type': alert.get('type', 'alert'),
+                'title': f'🔔 {alert["name"]}',
+                'body': f'{alert["type"].title()}: {json.dumps(data, ensure_ascii=False)}',
+                'severity': severity_map.get(alert.get('type', ''), 'info'),
+                'ticker': ticker if ticker else None,
+                'alert_id': alert['id'],
+                'metadata': json.dumps(data),
+            })
+            
             # Update alert
             _update('cronos_alerts', alert['id'], {
                 'last_triggered': now.isoformat(),

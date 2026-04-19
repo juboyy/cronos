@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import SUPABASE_URL, SUPABASE_SERVICE_KEY
-from nlp.ticker_map import TICKER_MAP
+from nlp.ticker_map import TICKER_MAP, b3_to_yahoo
 
 # Top tickers to track
 TOP_TICKERS = list(TICKER_MAP.keys())[:40]
@@ -55,8 +55,7 @@ def _upsert(table, data, on_conflict=None):
 
 def fetch_yahoo_prices(ticker, days=30):
     """Fetch recent price data from Yahoo Finance via chart API."""
-    suffix = '.SA' if not ticker.endswith('.SA') else ''
-    symbol = f'{ticker}{suffix}'
+    symbol = b3_to_yahoo(ticker)
     
     period2 = int(datetime.now().timestamp())
     period1 = int((datetime.now() - timedelta(days=days)).timestamp())

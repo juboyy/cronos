@@ -22,7 +22,7 @@ export default function AlertsPage() {
     await fetch('/api/cronos/alerts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: form.name, type: form.type, conditions, channels: ['dashboard', 'telegram'] }),
+      body: JSON.stringify({ name: form.name, type: form.type, conditions, channels: ['dashboard'] }),
     });
 
     setAlerts(await fetch('/api/cronos/alerts').then(r => r.json()));

@@ -122,6 +122,24 @@ def run_pipeline(sources=None, dry_run=False, run_impact=False, run_patterns=Fal
                     stats['sentiment'] += 1
                     time.sleep(0.5)
 
+                    # Auto-notify on strongly negative or positive sentiment
+                    if abs(sentiment['score']) > 0.4:
+                        try:
+                            from alert_engine import _insert as _notif_insert
+                            sev = 'warning' if sentiment['score'] < -0.3 else 'info'
+                            direction = '📉 Negativo' if sentiment['score'] < 0 else '📈 Positivo'
+                            tickers = [e['value'] for e in entities if e.get('type') == 'ticker']
+                            _notif_insert('cronos_notifications', {
+                                'type': 'sentiment',
+                                'title': f'{direction}: {article["title"][:60]}',
+                                'body': f'Score: {sentiment["score"]:.3f} | Fonte: {article.get("source", "?")}',
+                                'severity': sev,
+                                'ticker': tickers[0] if tickers else None,
+                                'article_id': article_id,
+                            })
+                        except Exception:
+                            pass  # notification is best-effort
+
             except Exception as e:
                 print(f'  [ERROR] Processing article: {e}')
                 stats['errors'] += 1

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { NotificationBell } from './NotificationBell';
 
 const NAV = [
   { href: '/', label: 'Feed' },
@@ -92,6 +93,7 @@ export function NavBar() {
               {n.label}
             </a>
           ))}
+          <NotificationBell />
           <button
             onClick={async () => { await fetch('/api/auth', { method: 'DELETE' }); window.location.href = '/login'; }}
             style={{

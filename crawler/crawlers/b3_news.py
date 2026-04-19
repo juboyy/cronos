@@ -1,6 +1,7 @@
-"""B3 (Bolsa de Valores) news scraper with Jina fallback."""
+"""B3 (Bolsa de Valores) news scraper with multiple fallback strategies."""
 import re
 import json
+import xml.etree.ElementTree as ET
 from crawlers.base import BaseCrawler
 
 
@@ -8,21 +9,60 @@ class B3Crawler(BaseCrawler):
     name = 'b3'
     url = 'https://www.b3.com.br/pt_br/noticias/'
 
+    # Multiple entry points to bypass 403
+    _RSS_URLS = [
+        'https://www.b3.com.br/data/files/noticias/noticias.json',
+        'https://www.b3.com.br/lumis/portal/file/fileDownload.jsp?fileId=8AA8D09775E4CF6B0175E5CD1B8E0A6A',
+    ]
+    
+    # B3 news via Google News RSS (indirect, bypasses 403)
+    _GOOGLE_NEWS_URL = 'https://news.google.com/rss/search?q=site:b3.com.br+noticias&hl=pt-BR&gl=BR&ceid=BR:pt-419'
+    
+    # B3 investor relations RSS
+    _IR_URLS = [
+        'https://ri.b3.com.br/feed/',
+        'https://api.b3.com.br/news/v1/articles?language=pt&limit=20',
+    ]
+
     def fetch(self):
-        # B3 page is JS-rendered. Try the API endpoint first
-        api_url = 'https://www.b3.com.br/data/files/noticias/noticias.json'
-        raw = self._fetch_url(api_url)
-        if raw:
-            articles = self._parse_json(raw)
-            if articles:
-                return articles
+        articles = []
 
-        # Fallback: Jina Reader (renders JS, bypasses blocks)
-        raw = self._fetch_via_jina(self.url)
-        if raw:
-            return self._parse_jina_text(raw)
+        # Strategy 1: Direct JSON API
+        for api_url in self._RSS_URLS:
+            raw = self._fetch_url(api_url)
+            if raw:
+                parsed = self._parse_json(raw)
+                if parsed:
+                    articles.extend(parsed)
+                    break
 
-        return []
+        # Strategy 2: Google News for B3 content
+        if not articles:
+            raw = self._fetch_url(self._GOOGLE_NEWS_URL)
+            if raw:
+                parsed = self._parse_google_rss(raw)
+                if parsed:
+                    articles.extend(parsed)
+
+        # Strategy 3: IR feed
+        if not articles:
+            for ir_url in self._IR_URLS:
+                raw = self._fetch_url(ir_url)
+                if raw:
+                    parsed = self._try_parse_any(raw, ir_url)
+                    if parsed:
+                        articles.extend(parsed)
+                        break
+
+        # Strategy 4: Jina Reader (renders JS, bypasses blocks)
+        if not articles:
+            raw = self._fetch_via_jina(self.url)
+            if raw:
+                parsed = self._parse_jina_text(raw)
+                if parsed:
+                    articles.extend(parsed)
+
+        return articles[:20]
 
     def _parse_json(self, raw):
         articles = []
@@ -49,6 +89,58 @@ class B3Crawler(BaseCrawler):
                 'published_at': item.get('data', item.get('date')),
             })
         return articles
+
+    def _parse_google_rss(self, raw):
+        """Parse Google News RSS for B3-sourced articles."""
+        articles = []
+        try:
+            root = ET.fromstring(raw)
+            for item in root.iter('item'):
+                title_el = item.find('title')
+                link_el = item.find('link')
+                pub_el = item.find('pubDate')
+                desc_el = item.find('description')
+
+                title = title_el.text.strip() if title_el is not None and title_el.text else ''
+                link = link_el.text.strip() if link_el is not None and link_el.text else ''
+                pub = pub_el.text.strip() if pub_el is not None and pub_el.text else None
+                desc = desc_el.text.strip() if desc_el is not None and desc_el.text else ''
+
+                # Clean Google News title suffix " - B3"
+                title = re.sub(r'\s*-\s*B3\s*$', '', title)
+                # Strip HTML from description
+                desc = re.sub(r'<[^>]+>', '', desc)
+
+                if title and link:
+                    articles.append({
+                        'source': self.name,
+                        'url': link,
+                        'title': title,
+                        'summary': desc[:500] if desc else None,
+                        'content': None,
+                        'published_at': pub,
+                    })
+        except ET.ParseError:
+            pass
+        return articles[:20]
+
+    def _try_parse_any(self, raw, url):
+        """Try JSON, then XML, then text parsing."""
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                return self._parse_json(raw)
+            if 'articles' in data:
+                return self._parse_json(json.dumps(data['articles']))
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        try:
+            return self._parse_google_rss(raw)  # generic RSS
+        except Exception:
+            pass
+
+        return self._parse_jina_text(raw)
 
     def _parse_jina_text(self, text):
         """Parse Jina Reader markdown output for news items."""

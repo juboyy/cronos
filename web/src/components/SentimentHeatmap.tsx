@@ -1,23 +1,54 @@
 'use client';
 
+import { useState, useRef, useEffect } from 'react';
+
+interface ArticleData {
+  published_at: string;
+  sentiment?: number;
+  title?: string;
+  source?: string;
+  url?: string;
+}
+
 interface DayData {
   date: string;
   count: number;
   avgSentiment: number;
+  articles: { title: string; source: string; sentiment: number; url?: string }[];
 }
 
-export function SentimentHeatmap({ articles }: { articles: { published_at: string; sentiment?: number }[] }) {
+export function SentimentHeatmap({ articles }: { articles: ArticleData[] }) {
+  const [tooltip, setTooltip] = useState<{ day: DayData; x: number; y: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close tooltip on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setTooltip(null);
+      }
+    };
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, []);
+
   // Build 90-day grid
   const today = new Date();
   const days: DayData[] = [];
-  const dayMap: Record<string, { count: number; sentSum: number }> = {};
+  const dayMap: Record<string, { count: number; sentSum: number; articles: { title: string; source: string; sentiment: number; url?: string }[] }> = {};
 
   for (const a of articles) {
     if (!a.published_at) continue;
     const d = a.published_at.slice(0, 10);
-    if (!dayMap[d]) dayMap[d] = { count: 0, sentSum: 0 };
+    if (!dayMap[d]) dayMap[d] = { count: 0, sentSum: 0, articles: [] };
     dayMap[d].count++;
     dayMap[d].sentSum += a.sentiment ?? 0;
+    dayMap[d].articles.push({
+      title: a.title || 'Sem título',
+      source: a.source || '?',
+      sentiment: a.sentiment ?? 0,
+      url: a.url,
+    });
   }
 
   for (let i = 89; i >= 0; i--) {
@@ -29,14 +60,14 @@ export function SentimentHeatmap({ articles }: { articles: { published_at: strin
       date: key,
       count: entry?.count ?? 0,
       avgSentiment: entry ? entry.sentSum / entry.count : 0,
+      articles: entry?.articles ?? [],
     });
   }
 
-  // Grid: 7 rows (days) x 13 cols (weeks)
-  const weeks: DayData[][] = [];
-  // Pad start to align with correct day of week
-  const startDayOfWeek = new Date(days[0].date).getDay(); // 0=Sun
-  const padded = [...Array(startDayOfWeek).fill(null), ...days];
+  // Grid: 7 rows (days) x N cols (weeks)
+  const weeks: (DayData | null)[][] = [];
+  const startDayOfWeek = new Date(days[0].date).getDay();
+  const padded: (DayData | null)[] = [...Array(startDayOfWeek).fill(null), ...days];
 
   for (let w = 0; w < Math.ceil(padded.length / 7); w++) {
     weeks.push(padded.slice(w * 7, (w + 1) * 7));
@@ -76,17 +107,61 @@ export function SentimentHeatmap({ articles }: { articles: { published_at: strin
     }
   }
 
+  function sentDot(s: number) {
+    const hue = s > 0.05 ? 155 : s < -0.05 ? 0 : 45;
+    return `hsl(${hue} 60% 50%)`;
+  }
+
   return (
-    <section>
+    <section ref={containerRef} style={{ position: 'relative' }}>
       <style>{`
         .heatmap-cell {
           transition: transform 150ms, box-shadow 150ms;
-          cursor: default;
+          cursor: pointer;
         }
         .heatmap-cell:hover {
           transform: scale(1.8);
           z-index: 10;
           box-shadow: 0 0 8px rgba(0,0,0,0.5);
+        }
+        .heatmap-tooltip {
+          position: fixed;
+          z-index: 100;
+          background: var(--bg-elevated);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          padding: 12px 14px;
+          min-width: 240px;
+          max-width: 320px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+          pointer-events: auto;
+          animation: tooltipIn 0.15s ease;
+        }
+        @keyframes tooltipIn {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .heatmap-tooltip-article {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          padding: 4px 0;
+          border-bottom: 1px solid var(--border-subtle);
+        }
+        .heatmap-tooltip-article:last-child {
+          border-bottom: none;
+        }
+        .heatmap-tooltip-article a {
+          font-size: 0.6875rem;
+          color: var(--text-secondary);
+          line-height: 1.35;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .heatmap-tooltip-article a:hover {
+          color: var(--text-primary);
         }
       `}</style>
 
@@ -128,7 +203,11 @@ export function SentimentHeatmap({ articles }: { articles: { published_at: strin
                 <div
                   key={d}
                   className="heatmap-cell"
-                  title={day ? `${day.date}: ${day.count} artigo${day.count !== 1 ? 's' : ''}, sent: ${day.avgSentiment.toFixed(2)}` : ''}
+                  onClick={(e) => {
+                    if (day && day.count > 0) {
+                      setTooltip({ day, x: e.clientX, y: e.clientY });
+                    }
+                  }}
                   style={{
                     width: '11px',
                     height: '11px',
@@ -144,8 +223,59 @@ export function SentimentHeatmap({ articles }: { articles: { published_at: strin
         ))}
       </div>
 
+      {/* Tooltip */}
+      {tooltip && (
+        <div
+          className="heatmap-tooltip"
+          style={{
+            left: Math.min(tooltip.x + 12, typeof window !== 'undefined' ? window.innerWidth - 340 : 600),
+            top: Math.min(tooltip.y - 20, typeof window !== 'undefined' ? window.innerHeight - 300 : 400),
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+              {new Date(tooltip.day.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
+            </span>
+            <span style={{ ...S.label, color: tooltip.day.avgSentiment > 0.05 ? 'var(--signal-up)' : tooltip.day.avgSentiment < -0.05 ? 'var(--signal-down)' : 'var(--signal-neutral)' }}>
+              sent: {tooltip.day.avgSentiment.toFixed(2)}
+            </span>
+          </div>
+          <div style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', marginBottom: '6px', fontFamily: 'var(--font-mono)' }}>
+            {tooltip.day.count} artigo{tooltip.day.count !== 1 ? 's' : ''}
+          </div>
+          <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+            {tooltip.day.articles.slice(0, 8).map((art, i) => (
+              <div key={i} className="heatmap-tooltip-article">
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: sentDot(art.sentiment), flexShrink: 0, marginTop: '5px' }} />
+                <div style={{ minWidth: 0 }}>
+                  {art.url ? (
+                    <a href={art.url} target="_blank" rel="noopener">{art.title}</a>
+                  ) : (
+                    <span style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>{art.title}</span>
+                  )}
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    {art.source} · {art.sentiment > 0 ? '+' : ''}{art.sentiment.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {tooltip.day.articles.length > 8 && (
+              <div style={{ ...S.label, textAlign: 'center', padding: '4px 0', color: 'var(--text-muted)' }}>
+                +{tooltip.day.articles.length - 8} mais
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => setTooltip(null)}
+            style={{ position: 'absolute', top: '6px', right: '8px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.75rem' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Legend */}
-      <div style={{ display: 'flex', gap: '16px', marginTop: '10px', marginLeft: '20px', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '16px', marginTop: '10px', marginLeft: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ ...S.label, fontSize: '0.4375rem' }}>Sentimento:</span>
         <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
           <span style={{ ...S.label, fontSize: '0.375rem' }}>neg</span>
@@ -164,6 +294,7 @@ export function SentimentHeatmap({ articles }: { articles: { published_at: strin
             <div key={i} style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--text-muted)', opacity: o }} />
           ))}
         </div>
+        <span style={{ ...S.label, fontSize: '0.375rem', color: 'var(--text-muted)' }}>clique na célula para detalhes</span>
       </div>
     </section>
   );

@@ -1,9 +1,9 @@
-"""Sentiment analysis: Gemini Flash primary, keyword fallback on 429."""
+"""Sentiment analysis: Gemini Flash primary, Antigravity secondary, keyword fallback."""
 import json
 import time
 import urllib.request
 import urllib.error
-from config import GEMINI_API_KEY
+from config import GEMINI_API_KEY, ANTIGRAVITY_API_KEY, ANTIGRAVITY_BASE_URL
 
 GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
 
@@ -76,6 +76,43 @@ def _parse_result(text_resp):
     return {'score': score, 'label': label, 'confidence': confidence}
 
 
+def _antigravity_sentiment(title, summary=None):
+    """Sentiment via Antigravity API (flat subscription, no rate limits)."""
+    if not ANTIGRAVITY_API_KEY or not ANTIGRAVITY_BASE_URL:
+        return None
+
+    text = title
+    if summary:
+        text += f'. {summary}'
+
+    payload = {
+        'model': 'gemini-2.5-flash',
+        'messages': [{'role': 'user', 'content': SENTIMENT_PROMPT.format(text=text[:500])}],
+        'temperature': 0.1,
+        'max_tokens': 100,
+    }
+
+    req = urllib.request.Request(
+        f'{ANTIGRAVITY_BASE_URL}/v1/chat/completions',
+        data=json.dumps(payload).encode(),
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {ANTIGRAVITY_API_KEY}',
+        },
+    )
+
+    try:
+        resp = urllib.request.urlopen(req, timeout=20)
+        data = json.loads(resp.read())
+        text_resp = data['choices'][0]['message']['content']
+        result = _parse_result(text_resp)
+        result['model'] = 'antigravity'
+        return result
+    except Exception as e:
+        print(f'  Antigravity error: {e}')
+        return None
+
+
 def analyze_sentiment(title, summary=None):
     """Analyze financial sentiment: Gemini primary, keyword fallback on 429."""
     global _last_call, _consecutive_429s
@@ -117,10 +154,17 @@ def analyze_sentiment(title, summary=None):
         if e.code == 429:
             _consecutive_429s += 1
             if _consecutive_429s >= 3:
-                print(f'  [SENTIMENT] Gemini exhausted after {_consecutive_429s} 429s — switching to keyword fallback')
+                print(f'  [SENTIMENT] Gemini exhausted after {_consecutive_429s} 429s — trying Antigravity')
+            # Try Antigravity before falling back to keyword
+            ag_result = _antigravity_sentiment(title, summary)
+            if ag_result:
+                return ag_result
             return _keyword_sentiment(title, summary)
         body = e.read().decode()[:200]
         print(f'  Gemini error: {e.code} — {body}')
+        ag_result = _antigravity_sentiment(title, summary)
+        if ag_result:
+            return ag_result
         return _keyword_sentiment(title, summary)
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         print(f'  Gemini parse error: {e}')

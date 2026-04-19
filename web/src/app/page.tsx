@@ -1,4 +1,5 @@
 import { supabaseQuery } from '@/lib/supabase';
+import { ArticleFeed } from '@/components/ArticleFeed';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,19 @@ async function getData() {
   const priceMap: Record<string, any[]> = {};
   for (const p of prices) { if (!priceMap[p.ticker]) priceMap[p.ticker] = []; priceMap[p.ticker].push(p); }
 
-  return { articles, entities, avgSent, posPct, negPct, sentimentCount: scores.length, macroMap, impacts, priceMap };
+  // Get total article count
+  let totalArticles = articles.length;
+  try {
+    const countUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://apkflemxmsbdltziouls.supabase.co'}/rest/v1/cronos_articles?select=id&head=true`;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    const cRes = await fetch(countUrl, {
+      headers: { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Prefer': 'count=exact' },
+      next: { revalidate: 60 },
+    });
+    totalArticles = parseInt(cRes.headers.get('content-range')?.split('/')[1] || '0', 10) || articles.length;
+  } catch { /* fallback */ }
+
+  return { articles, entities, avgSent, posPct, negPct, sentimentCount: scores.length, macroMap, impacts, priceMap, totalArticles };
 }
 
 function formatTime(iso: string | null) {
@@ -56,7 +69,7 @@ function SentimentDot({ score }: { score: number }) {
 }
 
 export default async function IntelligencePage() {
-  const { articles, entities, avgSent, posPct, negPct, sentimentCount, macroMap, impacts, priceMap } = await getData();
+  const { articles, entities, avgSent, posPct, negPct, sentimentCount, macroMap, impacts, priceMap, totalArticles } = await getData();
 
   const macroEntries = Object.entries(macroMap) as [string, any][];
   const macroLabels: Record<string, string> = { selic: 'Selic', ipca: 'IPCA', usdbrl: 'USD/BRL', cdi: 'CDI', ibov: 'Ibovespa', dxy: 'DXY' };
@@ -73,7 +86,7 @@ export default async function IntelligencePage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
 
       {/* ━━ MACRO RIBBON ━━ */}
-      <section style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+      <section className="macro-ribbon" style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
         {macroEntries.map(([key, m], i) => (
           <div
             key={key}
@@ -131,7 +144,7 @@ export default async function IntelligencePage() {
       </section>
 
       {/* ━━ MAIN GRID ━━ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr clamp(240px, 22vw, 320px)', gap: '40px', alignItems: 'start' }}>
+      <div className="main-grid" style={{ display: 'grid', gridTemplateColumns: '1fr clamp(240px, 22vw, 320px)', gap: '40px', alignItems: 'start' }}>
 
         {/* ── FEED COLUMN ── */}
         <section>
@@ -140,61 +153,7 @@ export default async function IntelligencePage() {
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)' }}>{articles.length} artigos</span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            {articles.map((a: any, i: number) => {
-              const sent = a.cronos_sentiment?.[0];
-              const score = sent?.score ?? 0;
-              const sourceColors: Record<string, string> = {
-                infomoney: 'hsl(25 80% 55%)', valor: 'hsl(210 60% 55%)', reuters: 'hsl(0 70% 55%)',
-                bcb: 'hsl(150 50% 45%)', b3: 'hsl(45 70% 50%)',
-              };
-              return (
-                <a
-                  key={a.id}
-                  href={a.url}
-                  target="_blank"
-                  rel="noopener"
-                  className="stagger interactive"
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '8px 1fr auto',
-                    gap: '14px',
-                    alignItems: 'start',
-                    padding: '14px 16px',
-                    background: 'transparent',
-                    borderBottom: '1px solid var(--border-subtle)',
-                  }}
-                >
-                  {/* Sentiment indicator */}
-                  <div style={{ paddingTop: '6px' }}>
-                    <SentimentDot score={score} />
-                  </div>
-
-                  {/* Content */}
-                  <div>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)', lineHeight: 1.45, marginBottom: '4px' }}>
-                      {a.title}
-                    </div>
-                    {a.summary && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                        {a.summary}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Meta */}
-                  <div style={{ textAlign: 'right', flexShrink: 0, paddingTop: '2px' }}>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: sourceColors[a.source] || 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      {a.source}
-                    </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '3px' }}>
-                      {formatTime(a.published_at)}
-                    </div>
-                  </div>
-                </a>
-              );
-            })}
-          </div>
+          <ArticleFeed articles={articles} totalCount={totalArticles} />
 
           {articles.length === 0 && (
             <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)' }}>
@@ -205,7 +164,7 @@ export default async function IntelligencePage() {
         </section>
 
         {/* ── SIDEBAR ── */}
-        <aside style={{ display: 'flex', flexDirection: 'column', gap: '28px', position: 'sticky', top: '68px' }}>
+        <aside className="sidebar-sticky" style={{ display: 'flex', flexDirection: 'column', gap: '28px', position: 'sticky', top: '68px' }}>
 
           {/* Top Impacts */}
           {impacts.length > 0 && (

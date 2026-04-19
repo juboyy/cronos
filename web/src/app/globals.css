@@ -130,6 +130,21 @@ h1, h2, h3, h4 {
 }
 .pulse { animation: pulse-live 2s ease-in-out infinite; }
 
+/* ── Article Modal ── */
+@keyframes modalSlideUp {
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.article-modal-overlay {
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* ── Focus ring ── */
 :focus-visible {
   outline: 2px solid var(--border-focus);
@@ -153,9 +168,44 @@ a { color: inherit; text-decoration: none; }
   align-items: start;
 }
 @media (max-width: 768px) {
-  body { padding: 0 12px; }
-  main { padding: 16px 0; }
+  body { padding: 0; font-size: 0.875rem; }
+  main { padding: 12px 12px !important; }
   .desktop-only { display: none !important; }
   .entity-two-col { grid-template-columns: 1fr !important; gap: 20px !important; }
   svg[viewBox] { max-width: 100%; height: auto; }
+
+  /* Main feed grid → single column */
+  .main-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
+
+  /* Macro ribbon → 2 columns */
+  .macro-ribbon { flex-wrap: wrap !important; }
+  .macro-ribbon > div { flex: 1 1 calc(50% - 4px) !important; min-width: 0 !important; }
+
+  /* Sidebar becomes horizontal */
+  .sidebar-sticky { position: static !important; }
+
+  /* Chain grid mobile */
+  .chain-grid-row {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* Heatmap cells smaller */
+  .heatmap-cell { width: 9px !important; height: 9px !important; }
+
+  /* Ticker tape smaller */
+  .ticker-tape { font-size: 0.5rem !important; }
+
+  /* Feed items: simpler layout */
+  .feed-item {
+    grid-template-columns: 6px 1fr auto !important;
+    gap: 10px !important;
+    padding: 12px !important;
+  }
+
+  /* Impact sidebar: horizontal scroll */
+  .impact-list { max-height: none !important; }
+
+  /* Entity badges: scroll */
+  .entity-badges { overflow-x: auto !important; flex-wrap: nowrap !important; -webkit-overflow-scrolling: touch; }
 }

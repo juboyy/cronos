@@ -2,6 +2,14 @@
 import { useState, useEffect, useRef } from 'react';
 
 interface Simulation { id: string; scenario: string; tickers: string[]; status: string; result: any; created_at: string; }
+interface MarketContext { macro: Record<string, any>; topMovers: { ticker: string; delta: number }[]; sentiment: { avg: number; posPct: number; negPct: number }; recentNews: string[]; }
+
+const SCENARIO_PRESETS = [
+  { label: 'Selic +0.5%', scenario: 'O Copom decide elevar a Selic em 50 bps para conter inflação persistente', tickers: 'ITUB4, BBDC4, BBAS3, B3SA3' },
+  { label: 'Dólar a R$6', scenario: 'Crise de confiança fiscal leva o dólar a romper R$6.00 com fuga de capital estrangeiro', tickers: 'PETR4, VALE3, SUZB3, EMBR3' },
+  { label: 'Petróleo +20%', scenario: 'Escalada no Oriente Médio leva petróleo Brent acima de US$100 por barril', tickers: 'PETR4, PRIO3, CSAN3, UGPA3' },
+  { label: 'Recessão Global', scenario: 'Dados econômicos confirmam recessão nos EUA e Europa, commodities desabam', tickers: 'VALE3, CSNA3, SUZB3, ABEV3' },
+];
 
 export default function SimulatePage() {
   const [scenario, setScenario] = useState('');
@@ -9,16 +17,51 @@ export default function SimulatePage() {
   const [loading, setLoading] = useState(false);
   const [simulations, setSimulations] = useState<Simulation[]>([]);
   const [active, setActive] = useState<Simulation | null>(null);
+  const [market, setMarket] = useState<MarketContext | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    // Load simulations
     fetch('/api/cronos/simulate').then(r => r.json()).then((sims) => {
-      setSimulations(sims);
-      // Auto-select the latest completed simulation
-      const completed = sims.find((s: any) => s.status === 'completed' && s.result);
-      if (completed) setActive(completed);
+      if (Array.isArray(sims)) {
+        setSimulations(sims);
+        const completed = sims.find((s: any) => s.status === 'completed' && s.result);
+        if (completed) setActive(completed);
+      }
     }).catch(() => {});
+
+    // Load market context for intelligent pre-fill
+    Promise.all([
+      fetch('/api/cronos/macro').then(r => r.json()).catch(() => []),
+      fetch('/api/cronos/impact').then(r => r.json()).catch(() => []),
+      fetch('/api/cronos/sentiment').then(r => r.json()).catch(() => []),
+    ]).then(([macro, impacts, sentiments]) => {
+      const macroMap: Record<string, any> = {};
+      if (Array.isArray(macro)) for (const m of macro) { if (!macroMap[m.indicator]) macroMap[m.indicator] = m; }
+
+      const scores = Array.isArray(sentiments) ? sentiments.map((s: any) => s.score).filter(Boolean) : [];
+      const avg = scores.length > 0 ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length : 0;
+
+      const topMovers = Array.isArray(impacts) ? impacts.slice(0, 5).map((i: any) => ({ ticker: i.ticker, delta: i.delta_1d || 0 })) : [];
+
+      setMarket({
+        macro: macroMap,
+        topMovers,
+        sentiment: {
+          avg,
+          posPct: scores.length > 0 ? Math.round(scores.filter((s: number) => s > 0.05).length / scores.length * 100) : 0,
+          negPct: scores.length > 0 ? Math.round(scores.filter((s: number) => s < -0.05).length / scores.length * 100) : 0,
+        },
+        recentNews: [],
+      });
+    });
   }, []);
+
+  const applyPreset = (preset: typeof SCENARIO_PRESETS[0]) => {
+    setScenario(preset.scenario);
+    setTickers(preset.tickers);
+    textareaRef.current?.focus();
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +74,7 @@ export default function SimulatePage() {
         body: JSON.stringify({
           scenario,
           tickers: tickers.split(',').map(t => t.trim()).filter(Boolean),
+          market_data: market ? `Selic: ${market.macro.selic?.value || '?'}, USD/BRL: ${market.macro.usdbrl?.value || '?'}, Sentimento: ${market.sentiment.avg.toFixed(3)}, Top movers: ${market.topMovers.map(m => m.ticker).join(', ')}` : '',
           config: { agents: 50, rounds: 3 },
         }),
       });
@@ -53,6 +97,59 @@ export default function SimulatePage() {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px' }}>
         <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.75rem', fontWeight: 400, color: 'var(--text-primary)' }}>Simulate</h1>
         <span style={{ ...S.label }}>MiroFish Swarm Engine</span>
+      </div>
+
+      {/* ── MARKET CONTEXT ── */}
+      {market && (
+        <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+          {Object.entries(market.macro).slice(0, 4).map(([key, m]) => (
+            <div key={key} style={{ flex: '1 1 100px', padding: '8px 12px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ ...S.label, marginBottom: '2px' }}>{key}</div>
+              <div style={{ ...S.mono, fontSize: '0.875rem', color: 'var(--text-primary)' }}>{typeof m.value === 'number' ? m.value.toFixed(2) : m.value}</div>
+            </div>
+          ))}
+          {market.topMovers.length > 0 && (
+            <div style={{ flex: '1 1 160px', padding: '8px 12px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ ...S.label, marginBottom: '2px' }}>Top Impacto</div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {market.topMovers.slice(0, 3).map(m => (
+                  <span key={m.ticker} style={{ ...S.mono, fontSize: '0.6875rem', color: 'var(--text-primary)' }}>{m.ticker}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ flex: '1 1 120px', padding: '8px 12px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ ...S.label, marginBottom: '2px' }}>Sentimento</div>
+            <div style={{ ...S.mono, fontSize: '0.875rem', color: market.sentiment.avg > 0.05 ? 'var(--signal-up)' : market.sentiment.avg < -0.05 ? 'var(--signal-down)' : 'var(--signal-neutral)' }}>
+              {market.sentiment.avg > 0 ? '+' : ''}{market.sentiment.avg.toFixed(3)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PRESETS ── */}
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        {SCENARIO_PRESETS.map((p, i) => (
+          <button
+            key={i}
+            onClick={() => applyPreset(p)}
+            className="interactive"
+            style={{
+              ...S.mono, fontSize: '0.625rem',
+              padding: '5px 10px',
+              background: 'transparent',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--text-tertiary)',
+              cursor: 'pointer',
+              transition: 'all 150ms',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
       </div>
 
       {/* ── INPUT ── */}
