@@ -204,6 +204,14 @@ def run_clustering(lookback_hours=72):
             unique_clusters.append(c)
 
     if unique_clusters:
+        # Clear stale clusters before inserting
+        try:
+            clear_url = f'{SUPABASE_URL}/rest/v1/cronos_clusters?id=neq.00000000-0000-0000-0000-000000000000'
+            clear_req = urllib.request.Request(clear_url, method='DELETE', headers=HEADERS)
+            urllib.request.urlopen(clear_req, timeout=10)
+        except Exception:
+            pass
+
         print(f'\n[CLUSTERS] Found {len(unique_clusters)} clusters:')
         for c in unique_clusters[:10]:
             print(f'  {c["title"]} ({c["article_count"]} arts, {c["dominant_sentiment"]})')

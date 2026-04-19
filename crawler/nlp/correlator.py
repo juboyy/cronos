@@ -150,6 +150,16 @@ def run_correlations(window_hours=WINDOW_HOURS, lookback_hours=48):
     # Sort by signal strength
     correlations.sort(key=lambda x: x['signal_strength'], reverse=True)
 
+    # Clear stale correlations before inserting fresh batch
+    if correlations:
+        try:
+            clear_url = f'{SUPABASE_URL}/rest/v1/cronos_correlations?id=neq.00000000-0000-0000-0000-000000000000'
+            clear_req = urllib.request.Request(clear_url, method='DELETE', headers=HEADERS)
+            urllib.request.urlopen(clear_req, timeout=10)
+            print(f'  Cleared old correlations')
+        except Exception as e:
+            print(f'  Warning: could not clear old correlations: {e}')
+
     if correlations:
         print(f'\n[CORRELATOR] Found {len(correlations)} cross-source correlations:')
         for c in correlations[:10]:

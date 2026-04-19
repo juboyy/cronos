@@ -4,6 +4,17 @@ import re
 from email.utils import parsedate_to_datetime
 from crawlers.base import BaseCrawler
 
+# Only keep articles from financial/economic sections
+ALLOWED_PATHS = {
+    '/economia/', '/mercado/', '/negocios/', '/financas/',
+    '/business/', '/investimentos/',
+}
+BLOCKED_PATHS = {
+    '/esportes/', '/futebol/', '/emais/', '/cultura/',
+    '/politica/', '/cidades/', '/saude/', '/paladar/',
+    '/link/', '/viagem/', '/educacao/',
+}
+
 
 class EstadaoCrawler(BaseCrawler):
     name = 'estadao'
@@ -36,6 +47,19 @@ class EstadaoCrawler(BaseCrawler):
 
             if not title or not link:
                 continue
+
+            # Filter: only financial/economic content
+            link_lower = link.lower()
+            if any(bp in link_lower for bp in BLOCKED_PATHS):
+                continue
+            # If it's not in a known financial section AND doesn't contain financial keywords, skip
+            if not any(ap in link_lower for ap in ALLOWED_PATHS):
+                fin_keywords = {'ibovespa', 'bolsa', 'a\u00e7\u00f5es', 'selic', 'infla\u00e7\u00e3o', 'pib',
+                                'cdi', 'd\u00f3lar', 'juros', 'fii', 'b3', 'petrobras', 'vale',
+                                'ipo', 'dividendos', 'mercado financeiro', 'banco central'}
+                title_lower = title.lower()
+                if not any(kw in title_lower for kw in fin_keywords):
+                    continue
 
             # Try content:encoded first, fall back to description
             desc = item.find('content:encoded', ns)
