@@ -49,15 +49,36 @@ const sourceColors: Record<string, string> = {
 
 const PAGE_SIZE = 25;
 
+type TimeFilter = 'all' | '24h' | '7d' | '30d';
+
+const TIME_FILTERS: { key: TimeFilter; label: string }[] = [
+  { key: 'all', label: 'Todos' },
+  { key: '24h', label: '24h' },
+  { key: '7d', label: '7 dias' },
+  { key: '30d', label: '30 dias' },
+];
+
+function getTimeCutoff(filter: TimeFilter): string | null {
+  if (filter === 'all') return null;
+  const now = new Date();
+  const ms = filter === '24h' ? 86400000 : filter === '7d' ? 604800000 : 2592000000;
+  return new Date(now.getTime() - ms).toISOString();
+}
+
 export function ArticleFeed({ articles, totalCount }: { articles: FeedArticle[]; totalCount?: number }) {
   const [modalId, setModalId] = useState<string | null>(null);
   const [extraArticles, setExtraArticles] = useState<FeedArticle[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
 
-  const allArticles = [...articles, ...extraArticles];
+  const cutoff = getTimeCutoff(timeFilter);
+  const allArticles = [...articles, ...extraArticles].filter(a => {
+    if (!cutoff) return true;
+    return (a.published_at || '') >= cutoff;
+  });
   const total = totalCount ?? allArticles.length;
-  const hasMore = allArticles.length < total;
+  const hasMore = timeFilter === 'all' && (articles.length + extraArticles.length) < total;
 
   async function loadMore() {
     if (loadingMore || !hasMore) return;
@@ -77,6 +98,25 @@ export function ArticleFeed({ articles, totalCount }: { articles: FeedArticle[];
 
   return (
     <>
+      {/* Time Filter Bar */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', padding: '0 16px' }}>
+        {TIME_FILTERS.map(f => (
+          <button key={f.key} onClick={() => setTimeFilter(f.key)} style={{
+            padding: '4px 12px', borderRadius: 'var(--radius-sm)',
+            background: timeFilter === f.key ? 'var(--accent-bg)' : 'transparent',
+            border: timeFilter === f.key ? '1px solid var(--accent-dim)' : '1px solid var(--border-subtle)',
+            color: timeFilter === f.key ? 'var(--accent)' : 'var(--text-muted)',
+            fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', cursor: 'pointer',
+            letterSpacing: '0.04em', textTransform: 'uppercase',
+          }}>
+            {f.label}
+          </button>
+        ))}
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', marginLeft: 'auto', alignSelf: 'center' }}>
+          {allArticles.length} artigos
+        </span>
+      </div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
         {allArticles.map((a) => {
           const sent = a.cronos_sentiment?.[0];
