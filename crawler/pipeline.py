@@ -178,4 +178,27 @@ def run_pipeline(sources=None, dry_run=False, run_impact=False, run_patterns=Fal
         except Exception as e:
             print(f'  [ERROR] Alert engine: {e}')
 
+    # Intelligence v2
+    if run_impact or run_patterns:
+        print(f'\n--- Cross-Source Correlator ---')
+        try:
+            from nlp.correlator import run_correlations
+            run_correlations()
+        except Exception as e:
+            print(f'  [ERROR] Correlator: {e}')
+
+        print(f'\n--- Temporal Clusters ---')
+        try:
+            from nlp.cluster_detector import run_clustering
+            run_clustering()
+        except Exception as e:
+            print(f'  [ERROR] Cluster detector: {e}')
+
+        print(f'\n--- Daily Briefing ---')
+        try:
+            from nlp.briefing_generator import run_briefing
+            run_briefing()
+        except Exception as e:
+            print(f'  [ERROR] Briefing generator: {e}')
+
     return stats
