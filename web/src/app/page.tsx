@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 async function getData() {
   const [articles, entities, sentiments, macro, impacts, prices] = await Promise.all([
-    supabaseQuery('cronos_articles', 'select=id,title,source,summary,published_at,url,cronos_sentiment(score,label)&order=published_at.desc.nullslast&limit=25') as Promise<Article[]>,
+    supabaseQuery('cronos_articles', 'select=id,title,source,summary,published_at,url,cronos_sentiment(score,label)&order=published_at.desc.nullslast&limit=100') as Promise<Article[]>,
     supabaseQuery('cronos_entities', 'select=id,type,value,canonical_name,sector&type=eq.ticker&limit=15') as Promise<Entity[]>,
     supabaseQuery('cronos_sentiment', 'select=score,label&limit=200') as Promise<Sentiment[]>,
     supabaseQuery('cronos_macro', 'select=indicator,value,date&order=date.desc&limit=30') as Promise<Macro[]>,

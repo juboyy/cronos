@@ -163,7 +163,12 @@ def run_price_pipeline(days=30, load_history=False, history_path=None):
     # 2) Yahoo Finance (recent prices for top tickers)
     print(f'\n[YAHOO] Fetching {len(TOP_TICKERS)} tickers ({days}d)...')
     for ticker in TOP_TICKERS:
-        prices = fetch_yahoo_prices(ticker, days)
+        try:
+            prices = fetch_yahoo_prices(ticker, days)
+        except Exception as e:
+            print(f'  {ticker}: SKIP ({e})')
+            stats['errors'] += 1
+            continue
         if prices:
             status = _upsert('cronos_prices', prices, on_conflict='ticker,date,source')
             if status and status < 300:

@@ -1,248 +1,249 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
-const BETTAFISH_URL = 'https://bettafish.216-238-124-248.nip.io';
-const STREAMLIT_URL = 'https://streamlit.216-238-124-248.nip.io';
 const PROXY_URL = '/api/engines/bettafish';
+const BETTAFISH_URL = 'https://bettafish.216-238-124-248.nip.io';
 
-const TABS = [
-  { id: 'main', label: 'Painel Principal', url: BETTAFISH_URL, description: 'Interface central para análise multi-agente de sentimentos e tendências.' },
-  { id: 'insight', label: 'Insight Engine', url: `${BETTAFISH_URL}/?engine=insight`, description: 'Extração de insights estratégicos e sinais de mercado a partir de dados não estruturados.' },
-  { id: 'media', label: 'Media Engine', url: `${BETTAFISH_URL}/?engine=media`, description: 'Monitoramento em tempo real de redes sociais, notícias e sentimento da mídia.' },
-  { id: 'query', label: 'Query Engine', url: `${BETTAFISH_URL}/?engine=query`, description: 'Interface de busca semântica profunda para exploração da base de conhecimento.' },
-  { id: 'forum', label: 'Forum', url: `${BETTAFISH_URL}/?engine=forum`, description: 'Análise de discussões em comunidades financeiras e fóruns especializados.' },
-];
+interface EngineStatus {
+  backend: 'loading' | 'online' | 'offline';
+  started: boolean;
+  subEngines: Record<string, { status: string; port: number | null }>;
+}
+
+interface SearchResult {
+  source: string;
+  success: boolean;
+  data?: unknown;
+  message?: string;
+}
 
 export default function BettaFishPage() {
-  const [activeTab, setActiveTab] = useState('main');
-  const [status, setStatus] = useState<'loading' | 'online' | 'offline'>('loading');
+  const [engine, setEngine] = useState<EngineStatus>({ backend: 'loading', started: false, subEngines: {} });
+  const [view, setView] = useState<'search' | 'forum' | 'graph' | 'status' | 'full'>('search');
+  const [query, setQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Record<string, SearchResult> | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [forumLog, setForumLog] = useState<string[]>([]);
+  const [graphData, setGraphData] = useState<string | null>(null);
 
-  const tab = TABS.find((t) => t.id === activeTab)!;
-  const iframeUrl = tab.url;
-
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const res = await fetch(PROXY_URL, { signal: AbortSignal.timeout(8000) });
-        const data = await res.json();
-        setStatus(data.backend === 'online' ? 'online' : 'offline');
-      } catch {
-        setStatus('offline');
-      }
-    };
-    checkStatus();
+  const checkHealth = useCallback(async () => {
+    setEngine(prev => ({ ...prev, backend: 'loading' }));
+    const [proxyData, statusData] = await Promise.all([
+      fetch(PROXY_URL, { signal: AbortSignal.timeout(8000) }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/engines/bettafish/status', { signal: AbortSignal.timeout(8000) }).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]);
+    setEngine({
+      backend: proxyData?.backend ?? 'offline',
+      started: proxyData?.started ?? false,
+      subEngines: statusData?.engines ?? {},
+    });
   }, []);
 
-  const startEngines = async () => {
-    try {
-      const res = await fetch(PROXY_URL, { method: 'POST' });
+  useEffect(() => { checkHealth(); }, [checkHealth]);
+
+  const runSearch = async () => {
+    if (!query.trim()) return;
+    setSearchLoading(true);
+    setSearchResults(null);
+    const res = await fetch('/api/engines/bettafish/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    }).catch(() => null);
+    if (res?.ok) {
       const data = await res.json();
-      alert(data.success ? 'Engines iniciados.' : 'Comando enviado.');
-      setStatus('loading');
-      setTimeout(() => window.location.reload(), 2000);
-    } catch {
-      alert('Falha ao enviar comando de inicialização.');
+      setSearchResults(data.results ?? {});
+    } else {
+      setSearchResults({ error: { source: 'system', success: false, message: 'Falha na conexão' } });
+    }
+    setSearchLoading(false);
+  };
+
+  const loadForum = async () => {
+    const res = await fetch('/api/engines/bettafish/forum').catch(() => null);
+    if (res?.ok) {
+      const data = await res.json();
+      setForumLog(data.lines ?? []);
     }
   };
+
+  const loadGraph = async () => {
+    const res = await fetch('/api/engines/bettafish/graph').catch(() => null);
+    if (res?.ok) {
+      const data = await res.json();
+      setGraphData(data.success ? JSON.stringify(data, null, 2) : data.message ?? 'Sem dados de grafo');
+    }
+  };
+
+  const startEngines = async () => {
+    const res = await fetch(PROXY_URL, { method: 'POST' }).catch(() => null);
+    if (res?.ok) {
+      setTimeout(checkHealth, 3000);
+    }
+  };
+
+  const statusColor = engine.backend === 'online' ? '#22c55e' : engine.backend === 'offline' ? '#ef4444' : '#facc15';
+  const statusLabel = engine.backend === 'online' ? (engine.started ? '● ATIVO' : '● PARADO') : engine.backend === 'offline' ? '● OFFLINE' : '● VERIFICANDO';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
       {/* Header */}
-      <div
-        style={{
-          padding: '20px clamp(16px, 3vw, 40px)',
-          borderBottom: '1px solid var(--border-subtle)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '12px',
-        }}
-      >
+      <div style={{ padding: '20px clamp(16px, 3vw, 40px)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span style={{ fontSize: '1.5rem' }}>🐟</span>
           <div>
-            <h1
-              style={{
-                fontFamily: 'var(--font-serif)',
-                fontSize: '1.25rem',
-                color: 'var(--text-primary)',
-                letterSpacing: '-0.02em',
-                margin: 0,
-              }}
-            >
-              BettaFish
-            </h1>
-            <p
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.625rem',
-                color: 'var(--text-muted)',
-                letterSpacing: '0.04em',
-                margin: 0,
-              }}
-            >
-              Multi-Agent Opinion Analysis Engine
-            </p>
+            <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.25rem', color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: 0 }}>BettaFish</h1>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)', letterSpacing: '0.04em', margin: 0 }}>Motor de Análise de Opinião Multi-Agente</p>
           </div>
-          <span
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.5625rem',
-              padding: '2px 8px',
-              borderRadius: 'var(--radius-sm)',
-              background: status === 'online' ? 'rgba(34, 197, 94, 0.15)' : status === 'offline' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(250, 204, 21, 0.15)',
-              color: status === 'online' ? '#22c55e' : status === 'offline' ? '#ef4444' : '#facc15',
-              border: `1px solid ${status === 'online' ? 'rgba(34, 197, 94, 0.3)' : status === 'offline' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(250, 204, 21, 0.3)'}`,
-            }}
-          >
-            {status === 'online' ? '● ONLINE' : status === 'offline' ? '● OFFLINE' : '● CHECKING'}
-          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', padding: '2px 8px', borderRadius: 'var(--radius-sm)', background: `${statusColor}22`, color: statusColor, border: `1px solid ${statusColor}44` }}>{statusLabel}</span>
         </div>
-
-        {/* Tab switcher */}
         <div style={{ display: 'flex', gap: '2px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '2px' }}>
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id)}
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.5625rem',
-                letterSpacing: '0.04em',
-                textTransform: 'uppercase',
-                padding: '6px 12px',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                cursor: 'pointer',
-                transition: 'all 150ms',
-                background: activeTab === t.id ? 'var(--accent)' : 'transparent',
-                color: activeTab === t.id ? '#000' : 'var(--text-tertiary)',
-              }}
-            >
-              {t.label}
+          {([
+            { id: 'search' as const, label: 'Busca' },
+            { id: 'forum' as const, label: 'Fórum', onSwitch: loadForum },
+            { id: 'graph' as const, label: 'Grafo', onSwitch: loadGraph },
+            { id: 'status' as const, label: 'Status' },
+            { id: 'full' as const, label: '↗ Streamlit' },
+          ]).map(v => (
+            <button key={v.id} onClick={() => { setView(v.id); v.onSwitch?.(); }}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.04em', textTransform: 'uppercase', padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', transition: 'all 150ms', background: view === v.id ? 'var(--accent)' : 'transparent', color: view === v.id ? '#000' : 'var(--text-tertiary)' }}>
+              {v.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Engine View */}
-      {status === 'offline' ? (
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '24px',
-            color: 'var(--text-muted)',
-            padding: '40px',
-            textAlign: 'center'
-          }}
-        >
-          <span style={{ fontSize: '3rem' }}>🐟</span>
-          <div>
-            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.875rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
-              BettaFish Engine is Offline
-            </p>
-            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)' }}>
-              Last Check: {new Date().toLocaleTimeString()} • URL: {BETTAFISH_URL}
-            </p>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', width: '100%', maxWidth: '800px' }}>
-             {TABS.map(t => (
-               <div key={t.id} style={{ padding: '16px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border-subtle)', textAlign: 'left' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-primary)', textTransform: 'uppercase' }}>{t.label}</span>
-                    <span style={{ fontSize: '0.5rem', color: '#ef4444' }}>● DOWN</span>
-                  </div>
-                  <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>{t.description}</p>
-               </div>
-             ))}
-          </div>
-
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={() => {
-                setStatus('loading');
-                window.location.reload();
-              }}
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.625rem',
-                padding: '10px 20px',
-                borderRadius: 'var(--radius)',
-                border: '1px solid var(--border-subtle)',
-                background: 'var(--bg-card)',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
-                textTransform: 'uppercase'
-              }}
-            >
-              Retry Connection
-            </button>
-            <button
-              onClick={startEngines}
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.625rem',
-                padding: '10px 20px',
-                borderRadius: 'var(--radius)',
-                border: 'none',
-                background: 'var(--accent)',
-                color: '#000',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                textTransform: 'uppercase'
-              }}
-            >
-              Start Engines
-            </button>
-          </div>
-        </div>
-      ) : activeTab === 'main' ? (
-        <iframe
-          key={activeTab}
-          src={iframeUrl}
-          style={{
-            flex: 1,
-            border: 'none',
-            width: '100%',
-            background: '#0a0a0a',
-          }}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          title={`BettaFish — ${tab.label}`}
-        />
-      ) : (
-        <div style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '24px' }}>
-            <div style={{ maxWidth: '600px', textAlign: 'center' }}>
-                <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.5rem', marginBottom: '12px' }}>{tab.label}</h2>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>{tab.description}</p>
-                <div style={{ padding: '20px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border-subtle)', display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '0.625rem', color: '#22c55e', fontFamily: 'var(--font-mono)' }}>STATUS: OPERATIONAL</span>
-                    <div style={{ height: '12px', width: '1px', background: 'var(--border-subtle)' }} />
-                    <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>VERSION: 2.4.0-BETA</span>
-                </div>
+      {/* Content */}
+      <div style={{ flex: 1, overflow: 'auto', padding: view === 'full' ? 0 : '24px clamp(16px, 3vw, 40px)' }}>
+        {view === 'search' && (
+          <div style={{ maxWidth: '800px' }}>
+            <div style={{ marginBottom: '24px' }}>
+              <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '4px' }}>Busca Multi-Motor</h2>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)' }}>Consulta simultânea em Insight, Media, Query e Forum engines.</p>
             </div>
-            
-            <iframe
-                key={activeTab}
-                src={iframeUrl}
-                style={{
-                    width: '100%',
-                    height: '500px',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius)',
-                    background: '#0a0a0a',
-                }}
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                title={`BettaFish — ${tab.label}`}
-            />
-        </div>
-      )}
+
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+              <input
+                type="text"
+                placeholder="Ex: Petrobras dividendos, Selic impacto varejo..."
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && runSearch()}
+                autoFocus
+                style={{ flex: 1, padding: '12px 16px', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)', color: 'var(--text-primary)', outline: 'none' }}
+              />
+              <button
+                onClick={runSearch}
+                disabled={searchLoading || !query.trim() || engine.backend !== 'online'}
+                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', padding: '12px 24px', borderRadius: 'var(--radius)', border: 'none', background: engine.backend === 'online' ? 'var(--accent)' : 'var(--bg-card)', color: engine.backend === 'online' ? '#000' : 'var(--text-muted)', cursor: engine.backend === 'online' ? 'pointer' : 'not-allowed', fontWeight: 'bold', textTransform: 'uppercase', opacity: searchLoading ? 0.6 : 1 }}
+              >
+                {searchLoading ? '...' : 'Buscar'}
+              </button>
+            </div>
+
+            {searchResults && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {Object.entries(searchResults).map(([key, val]) => (
+                  <div key={key} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)', padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-primary)', textTransform: 'uppercase' }}>{key}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: val.success ? '#22c55e' : '#ef4444' }}>
+                        {val.success ? '✓' : '✗'}
+                      </span>
+                    </div>
+                    <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, maxHeight: '200px', overflow: 'auto' }}>
+                      {val.message || (val.data ? JSON.stringify(val.data, null, 2) : 'Sem dados')}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!searchResults && engine.backend === 'offline' && (
+              <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '40px', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '16px' }}>Engine offline. Inicie os motores para buscar.</p>
+                <button onClick={startEngines} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', padding: '10px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#000', cursor: 'pointer', fontWeight: 'bold' }}>
+                  Iniciar Motores
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {view === 'forum' && (
+          <div style={{ maxWidth: '800px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1rem', color: 'var(--text-primary)' }}>Fórum de Discussão</h2>
+              <button onClick={loadForum} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer' }}>Atualizar</button>
+            </div>
+            <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '16px', border: '1px solid var(--border-subtle)', maxHeight: '500px', overflow: 'auto' }}>
+              {forumLog.length === 0 ? (
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center' }}>Sem atividade no fórum.</p>
+              ) : (
+                forumLog.map((line, i) => (
+                  <div key={i} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-secondary)', padding: '4px 0', borderBottom: i < forumLog.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>{line}</div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {view === 'graph' && (
+          <div style={{ maxWidth: '800px' }}>
+            <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '16px' }}>Grafo de Conhecimento</h2>
+            <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '20px', border: '1px solid var(--border-subtle)' }}>
+              <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', margin: 0 }}>
+                {graphData ?? 'Carregando...'}
+              </pre>
+            </div>
+          </div>
+        )}
+
+        {view === 'status' && (
+          <div style={{ maxWidth: '900px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '24px' }}>
+              {Object.entries(engine.subEngines).length > 0 ? (
+                Object.entries(engine.subEngines).map(([name, info]) => (
+                  <div key={name} style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '16px', border: '1px solid var(--border-subtle)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-primary)', textTransform: 'uppercase' }}>{name}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: info.status === 'running' ? '#22c55e' : '#ef4444' }}>
+                        {info.status === 'running' ? '● ATIVO' : '● PARADO'}
+                      </span>
+                    </div>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)' }}>Porta: {info.port ?? 'N/A'}</span>
+                  </div>
+                ))
+              ) : (
+                <div style={{ gridColumn: '1 / -1', background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '20px', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>Carregando status dos sub-motores...</p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={checkHealth} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', padding: '8px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border-subtle)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                Atualizar Status
+              </button>
+              {!engine.started && (
+                <button onClick={startEngines} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', padding: '8px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#000', cursor: 'pointer', fontWeight: 'bold' }}>
+                  Iniciar Motores
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {view === 'full' && (
+          <iframe
+            src={BETTAFISH_URL}
+            style={{ width: '100%', height: '100%', border: 'none', background: '#0a0a0a' }}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            title="BettaFish — Streamlit"
+          />
+        )}
+      </div>
     </div>
   );
 }
