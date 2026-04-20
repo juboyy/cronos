@@ -5,10 +5,11 @@ export interface Article {
   title: string;
   summary: string | null;
   content: string | null;
-  published_at: string | null;
+  published_at: string;
   crawled_at: string;
   image_url: string | null;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
+  cronos_sentiment?: Partial<Sentiment>[];
 }
 
 export interface Entity {
@@ -17,7 +18,7 @@ export interface Entity {
   value: string;
   canonical_name: string | null;
   sector: string | null;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 export interface ArticleEntity {
@@ -25,6 +26,7 @@ export interface ArticleEntity {
   entity_id: string;
   relevance: number;
   context: string | null;
+  cronos_articles?: Article;
 }
 
 export interface Sentiment {
@@ -34,6 +36,14 @@ export interface Sentiment {
   label: 'positive' | 'negative' | 'neutral';
   confidence: number;
   model: string;
+  created_at: string;
+}
+
+export interface Macro {
+  id: string;
+  indicator: string;
+  value: number;
+  date: string;
   created_at: string;
 }
 
@@ -47,9 +57,8 @@ export interface TrendingEntity extends Entity {
   avg_sentiment: number;
 }
 
-// Sprint 2+ types
-
 export interface Price {
+  ticker: string;
   date: string;
   open: number | null;
   high: number | null;
@@ -71,7 +80,7 @@ export interface Impact {
   confidence: number;
   sentiment_score: number;
   source_trust: number;
-  window_data: Record<string, any>;
+  window_data: Record<string, unknown>;
   created_at: string;
   cronos_articles?: { title: string; source: string; published_at: string };
 }
@@ -80,7 +89,7 @@ export interface Simulation {
   id: string;
   scenario: string;
   tickers: string[];
-  config: Record<string, any>;
+  config: Record<string, unknown>;
   status: 'pending' | 'running' | 'completed' | 'failed';
   result: SimulationResult | null;
   created_at: string;
@@ -136,10 +145,97 @@ export interface Alert {
   id: string;
   name: string;
   type: string;
-  conditions: Record<string, any>;
+  conditions: Record<string, unknown>;
   channels: string[];
   active: boolean;
   last_triggered: string | null;
   trigger_count: number;
   cooldown_minutes: number;
+}
+
+export interface Correlation {
+  id: string;
+  entity_value: string;
+  entity_type: string;
+  source_count: number;
+  sources: Record<string, number>;
+  avg_sentiment: number;
+  sentiment_consensus: number;
+  signal_strength: number;
+  window_start: string;
+  window_end: string;
+  created_at: string;
+}
+
+export interface Cluster {
+  id: string;
+  cluster_type: string;
+  title: string;
+  article_ids: string[];
+  entity_ids: string[];
+  sources: string[];
+  article_count: number;
+  avg_sentiment: number;
+  dominant_sentiment: string;
+  window_minutes: number;
+  window_start: string;
+  window_end: string;
+  keywords: string[];
+  created_at: string;
+}
+
+export interface Briefing {
+  id: string;
+  date: string;
+  summary: string;
+  top_entities: string[];
+  top_correlations: string[];
+  top_clusters: string[];
+  market_mood: number;
+  article_count: number;
+  source_breakdown: Record<string, number>;
+  alerts_fired: number;
+}
+
+export interface Notification {
+  id: string;
+  title: string;
+  content: string;
+  type: string;
+  read: boolean;
+  created_at: string;
+  metadata: Record<string, unknown>;
+  severity?: 'critical' | 'warning' | 'info';
+  is_read?: boolean;
+  body?: string;
+  ticker?: string;
+}
+
+export interface RelatedArticle {
+  id: string;
+  title: string;
+  source: string;
+  published_at?: string;
+  url: string;
+}
+
+export interface GraphNode {
+  id: string;
+  type: string;
+  label: string;
+  group: string;
+  sector?: string;
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+  fx?: number | null;
+  fy?: number | null;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+  label?: string;
 }

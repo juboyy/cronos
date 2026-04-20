@@ -44,13 +44,8 @@ def _upsert(table, data, on_conflict=None):
         data=body,
         headers=_headers({'Prefer': 'resolution=merge-duplicates,return=minimal'}),
     )
-    try:
-        resp = urllib.request.urlopen(req, timeout=15)
-        return resp.status
-    except urllib.error.HTTPError as e:
-        err = e.read().decode()[:200]
-        print(f'  DB upsert error ({table}): {e.code} — {err}')
-        return e.code
+    resp = urllib.request.urlopen(req, timeout=15)
+    return resp.status
 
 
 def fetch_yahoo_prices(ticker, days=30):
@@ -67,32 +62,28 @@ def fetch_yahoo_prices(ticker, days=30):
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
     })
     
-    try:
-        resp = urllib.request.urlopen(req, timeout=10)
-        data = json.loads(resp.read())
-        result = data['chart']['result'][0]
-        timestamps = result['timestamp']
-        quotes = result['indicators']['quote'][0]
-        
-        prices = []
-        for i, ts in enumerate(timestamps):
-            dt = datetime.fromtimestamp(ts)
-            if quotes['close'][i] is None:
-                continue
-            prices.append({
-                'ticker': ticker,
-                'date': dt.strftime('%Y-%m-%d'),
-                'open': round(quotes['open'][i], 2) if quotes['open'][i] else None,
-                'high': round(quotes['high'][i], 2) if quotes['high'][i] else None,
-                'low': round(quotes['low'][i], 2) if quotes['low'][i] else None,
-                'close': round(quotes['close'][i], 2),
-                'volume': int(quotes['volume'][i]) if quotes['volume'][i] else 0,
-                'source': 'yahoo',
-            })
-        return prices
-    except Exception as e:
-        print(f'  [Yahoo] {ticker}: {e}')
-        return []
+    resp = urllib.request.urlopen(req, timeout=10)
+    data = json.loads(resp.read())
+    result = data['chart']['result'][0]
+    timestamps = result['timestamp']
+    quotes = result['indicators']['quote'][0]
+    
+    prices = []
+    for i, ts in enumerate(timestamps):
+        dt = datetime.fromtimestamp(ts)
+        if quotes['close'][i] is None:
+            continue
+        prices.append({
+            'ticker': ticker,
+            'date': dt.strftime('%Y-%m-%d'),
+            'open': round(quotes['open'][i], 2) if quotes['open'][i] else None,
+            'high': round(quotes['high'][i], 2) if quotes['high'][i] else None,
+            'low': round(quotes['low'][i], 2) if quotes['low'][i] else None,
+            'close': round(quotes['close'][i], 2),
+            'volume': int(quotes['volume'][i]) if quotes['volume'][i] else 0,
+            'source': 'yahoo',
+        })
+    return prices
 
 
 def fetch_bcb_sgs(series_code, indicator, days=90):
@@ -105,27 +96,23 @@ def fetch_bcb_sgs(series_code, indicator, days=90):
            f'&dataInicial={start.strftime("%d/%m/%Y")}'
            f'&dataFinal={end.strftime("%d/%m/%Y")}')
     
-    try:
-        req = urllib.request.Request(url, headers={
-            'User-Agent': 'Mozilla/5.0',
-            'Accept': 'application/json',
+    req = urllib.request.Request(url, headers={
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'application/json',
+    })
+    resp = urllib.request.urlopen(req, timeout=10)
+    data = json.loads(resp.read())
+    
+    records = []
+    for item in data:
+        dt = datetime.strptime(item['data'], '%d/%m/%Y')
+        records.append({
+            'indicator': indicator,
+            'date': dt.strftime('%Y-%m-%d'),
+            'value': float(item['valor']),
+            'source': 'bcb',
         })
-        resp = urllib.request.urlopen(req, timeout=10)
-        data = json.loads(resp.read())
-        
-        records = []
-        for item in data:
-            dt = datetime.strptime(item['data'], '%d/%m/%Y')
-            records.append({
-                'indicator': indicator,
-                'date': dt.strftime('%Y-%m-%d'),
-                'value': float(item['valor']),
-                'source': 'bcb',
-            })
-        return records
-    except Exception as e:
-        print(f'  [BCB] {indicator}: {e}')
-        return []
+    return records
 
 
 def load_b3_csv(csv_path):
@@ -134,22 +121,19 @@ def load_b3_csv(csv_path):
     with open(csv_path, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            try:
-                dt = datetime.strptime(row['date'].strip(), '%Y%m%d')
-                records.append({
-                    'ticker': row['ticker'].strip(),
-                    'date': dt.strftime('%Y-%m-%d'),
-                    'open': float(row['open']) if row.get('open') else None,
-                    'high': float(row['high']) if row.get('high') else None,
-                    'low': float(row['low']) if row.get('low') else None,
-                    'close': float(row['close']),
-                    'volume': int(float(row.get('volume_shares', 0) or 0)),
-                    'volume_brl': float(row.get('volume_brl', 0) or 0),
-                    'trades': int(float(row.get('trades', 0) or 0)),
-                    'source': 'b3',
-                })
-            except (ValueError, KeyError) as e:
-                continue
+            dt = datetime.strptime(row['date'].strip(), '%Y%m%d')
+            records.append({
+                'ticker': row['ticker'].strip(),
+                'date': dt.strftime('%Y-%m-%d'),
+                'open': float(row['open']) if row.get('open') else None,
+                'high': float(row['high']) if row.get('high') else None,
+                'low': float(row['low']) if row.get('low') else None,
+                'close': float(row['close']),
+                'volume': int(float(row.get('volume_shares', 0) or 0)),
+                'volume_brl': float(row.get('volume_brl', 0) or 0),
+                'trades': int(float(row.get('trades', 0) or 0)),
+                'source': 'b3',
+            })
     return records
 
 

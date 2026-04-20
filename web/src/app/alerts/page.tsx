@@ -1,16 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 
-interface Alert {
-  id: string; name: string; type: string; conditions: Record<string, any>;
-  channels: string[]; active: boolean; last_triggered: string | null;
-  trigger_count: number; cooldown_minutes: number;
-}
-
-interface Notification {
-  id: string; type: string; title: string; body?: string; ticker?: string;
-  severity: string; is_read: boolean; created_at: string; article_id?: string;
-}
+import { Alert, Notification, Impact } from '@/lib/types';
+import { timeAgo } from '@/lib/utils';
 
 const S = {
   label: { fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' as const },
@@ -18,7 +10,7 @@ const S = {
   input: {
     width: '100%', background: 'var(--bg-surface)', border: '1px solid var(--border)',
     borderRadius: 'var(--radius)', padding: '10px 14px', color: 'var(--text-primary)',
-    fontFamily: 'var(--font-display)', fontSize: '0.8125rem', outline: 'none',
+    fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', outline: 'none',
   },
 };
 
@@ -28,23 +20,40 @@ const typeAccents: Record<string, string> = {
 };
 
 const sevColors: Record<string, string> = {
-  critical: 'var(--signal-down)', warning: 'var(--signal-neutral)', info: 'var(--signal-info)',
+  critical: 'var(--signal-down)', warning: 'var(--signal-neutral)', info: 'hsl(210 60% 55%)',
 };
 
 const sevIcons: Record<string, string> = {
   critical: '🔴', warning: '🟡', info: '🔵',
 };
 
-function timeAgo(iso: string) {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffM = Math.floor((now.getTime() - d.getTime()) / 60000);
-  if (diffM < 1) return 'agora';
-  if (diffM < 60) return `${diffM}m`;
-  const diffH = Math.floor(diffM / 60);
-  if (diffH < 24) return `${diffH}h`;
-  const diffD = Math.floor(diffH / 24);
-  return `${diffD}d`;
+
+
+function getSeverityClass(conditions: Record<string, unknown>): string {
+  if (typeof conditions.sentiment_below === 'number' && (conditions.sentiment_below < -0.5) || (typeof conditions.delta_above === 'number' && conditions.delta_above > 5)) return 'critical';
+  if (typeof conditions.sentiment_below === 'number' && (conditions.sentiment_below < -0.3) || (typeof conditions.delta_above === 'number' && conditions.delta_above > 2)) return 'warning';
+  return 'info';
+}
+
+function Sparkline({ count, last }: { count: number, last: string | null }) {
+  if (!count) return <div style={{ width: 40, height: 12, borderBottom: '1px dashed var(--border-subtle)' }} />;
+  
+  const points = [2, 5, 3, 8, 4, 6, 9];
+  const lastDaysAgo = last ? Math.floor((Date.now() - new Date(last).getTime()) / (1000 * 60 * 60 * 24)) : 30;
+  
+  const data = points.map((p, i) => {
+    let val = p * (count / 10);
+    if (i === 6 - (lastDaysAgo % 7)) val += 5; // spike near last trigger
+    return Math.min(12, Math.max(2, val));
+  });
+
+  const path = `M 0 ${12 - data[0]} ` + data.map((d, i) => `L ${(i * 40) / 6} ${12 - d}`).join(' ');
+
+  return (
+    <svg width="40" height="12" style={{ overflow: 'visible' }} aria-hidden="true">
+      <path d={path} fill="none" stroke="var(--accent)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }} />
+    </svg>
+  );
 }
 
 type Tab = 'alerts' | 'history';
@@ -53,17 +62,19 @@ export default function AlertsPage() {
   const [tab, setTab] = useState<Tab>('alerts');
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [impacts, setImpacts] = useState<Impact[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', type: 'sentiment', ticker: '', threshold: '-0.3', channel: 'dashboard' });
 
   useEffect(() => {
     fetch('/api/cronos/alerts').then(r => r.json()).then(setAlerts).catch(() => {});
     fetch('/api/cronos/notifications').then(r => r.json()).then(d => setNotifications(Array.isArray(d) ? d : d.notifications || [])).catch(() => {});
+    fetch('/api/cronos/impacts').then(r => r.json()).then(setImpacts).catch(() => {});
   }, []);
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
-    const conditions: Record<string, any> = { ticker: form.ticker };
+    const conditions: Record<string, string | number> = { ticker: form.ticker };
     if (form.type === 'sentiment') conditions.sentiment_below = parseFloat(form.threshold);
     if (form.type === 'volume') conditions.volume_above = parseFloat(form.threshold);
     if (form.type === 'price') conditions.delta_above = parseFloat(form.threshold);
@@ -93,13 +104,21 @@ export default function AlertsPage() {
     setAlerts(prev => prev.filter(a => a.id !== id));
   };
 
-  // Group notifications by date
   const groupedNotifs: Record<string, Notification[]> = {};
   for (const n of notifications) {
     const day = new Date(n.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
     if (!groupedNotifs[day]) groupedNotifs[day] = [];
     groupedNotifs[day].push(n);
   }
+
+  const suggestions = impacts
+    .filter(imp => imp.impact_score > 0.5)
+    .slice(0, 3)
+    .map(imp => ({
+      title: `Criar alerta para ${imp.ticker}?`,
+      desc: `Impacto alto detectado (${imp.impact_score.toFixed(2)})`,
+      ticker: imp.ticker
+    }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -113,7 +132,6 @@ export default function AlertsPage() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          {/* Tabs */}
           {(['alerts', 'history'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '6px 16px', borderRadius: 'var(--radius-sm)',
@@ -140,11 +158,39 @@ export default function AlertsPage() {
         </div>
       </div>
 
+      {/* Sugestões Inteligentes */}
+      {tab === 'alerts' && suggestions.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <h2 style={{ ...S.label, color: 'var(--accent)' }}>💡 Sugestões Inteligentes</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+            {suggestions.map((s, i) => (
+              <div key={i} style={{ 
+                padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', 
+                borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: '8px'
+              }}>
+                <div style={{ fontSize: '0.8125rem', color: 'var(--text-primary)', fontWeight: 500 }}>{s.title}</div>
+                <div style={{ fontSize: '0.6875rem', color: 'var(--text-tertiary)' }}>{s.desc}</div>
+                <button 
+                  onClick={() => { setShowForm(true); setForm({ ...form, ticker: s.ticker, name: `${s.ticker} Sentiment` }); }}
+                  style={{
+                    alignSelf: 'flex-start', marginTop: '4px', padding: '4px 10px', background: 'transparent',
+                    border: '1px solid var(--accent)', color: 'var(--accent)', borderRadius: 'var(--radius-sm)',
+                    ...S.mono, fontSize: '0.625rem', cursor: 'pointer'
+                  }}
+                >
+                  CONFIGURAR
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── CREATE FORM ── */}
       {tab === 'alerts' && showForm && (
         <form onSubmit={create} className="stagger" style={{
           padding: '24px', background: 'var(--bg-surface)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+          borderRadius: 'var(--radius)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
           gap: '16px',
         }}>
           <div>
@@ -193,9 +239,14 @@ export default function AlertsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           {alerts.map((alert) => {
             const accent = typeAccents[alert.type] || 'var(--text-tertiary)';
+            const sev = getSeverityClass(alert.conditions);
+            
+            const daysSinceLast = alert.last_triggered ? Math.max(1, (Date.now() - new Date(alert.last_triggered).getTime()) / (1000 * 60 * 60 * 24)) : 30;
+            const freq = alert.trigger_count > 0 ? (alert.trigger_count / (Math.max(alert.trigger_count, 1) * daysSinceLast) * 7).toFixed(1) : '0';
+
             return (
               <div key={alert.id} style={{
-                display: 'grid', gridTemplateColumns: '10px 1fr auto 100px 80px',
+                display: 'grid', gridTemplateColumns: '10px 1fr auto 100px 60px 80px',
                 gap: '14px', alignItems: 'center', padding: '14px 16px',
                 borderBottom: '1px solid var(--border-subtle)', opacity: alert.active ? 1 : 0.4,
               }}>
@@ -206,6 +257,9 @@ export default function AlertsPage() {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
                     <span style={{ fontSize: '0.875rem', color: 'var(--text-primary)', fontWeight: 500 }}>{alert.name}</span>
+                    <span style={{ ...S.mono, fontSize: '0.5625rem', color: sevColors[sev], padding: '1px 6px', border: `1px solid ${sevColors[sev]}33`, borderRadius: 'var(--radius-sm)', textTransform: 'uppercase' }}>
+                      {sev}
+                    </span>
                     <span style={{ ...S.mono, fontSize: '0.5625rem', color: accent, padding: '1px 6px', border: `1px solid ${accent}33`, borderRadius: 'var(--radius-sm)' }}>
                       {alert.type}
                     </span>
@@ -213,6 +267,7 @@ export default function AlertsPage() {
                   <div style={{ ...S.mono, fontSize: '0.625rem', color: 'var(--text-muted)' }}>
                     {Object.entries(alert.conditions).map(([k, v]) => `${k}: ${v}`).join(' · ')}
                     {alert.last_triggered && ` · último: ${timeAgo(alert.last_triggered)}`}
+                    <span style={{ color: 'var(--accent)', marginLeft: '8px' }}>~{freq}x/semana</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '4px' }}>
@@ -222,9 +277,12 @@ export default function AlertsPage() {
                     </span>
                   ))}
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ ...S.mono, fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>{alert.trigger_count}</span>
-                  <span style={{ ...S.mono, fontSize: '0.5rem', color: 'var(--text-muted)', marginLeft: '3px' }}>disparos</span>
+                <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ ...S.mono, fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>{alert.trigger_count}</span>
+                    <span style={{ ...S.mono, fontSize: '0.5rem', color: 'var(--text-muted)' }}>hits</span>
+                  </div>
+                  <Sparkline count={alert.trigger_count} last={alert.last_triggered} />
                 </div>
                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
                   <button onClick={() => toggleAlert(alert.id, alert.active)} style={{
@@ -255,7 +313,7 @@ export default function AlertsPage() {
         </div>
       )}
 
-      {/* ── HISTORY TAB — notification timeline ── */}
+      {/* ── HISTORY TAB ── */}
       {tab === 'history' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {Object.entries(groupedNotifs).length === 0 && (
@@ -267,22 +325,17 @@ export default function AlertsPage() {
 
           {Object.entries(groupedNotifs).map(([day, notifs]) => (
             <div key={day}>
-              {/* Day header */}
               <div style={{
                 ...S.label, fontSize: '0.625rem', color: 'var(--text-tertiary)',
                 marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)',
               }}>
                 {day}
               </div>
-
-              {/* Timeline */}
               <div style={{ position: 'relative', paddingLeft: '20px' }}>
-                {/* Vertical line */}
                 <div style={{
                   position: 'absolute', left: '5px', top: 0, bottom: 0,
                   width: '1px', background: 'var(--border-subtle)',
                 }} />
-
                 {notifs.map((n) => (
                   <div key={n.id} className="stagger" style={{
                     position: 'relative', padding: '10px 14px', marginBottom: '4px',
@@ -291,14 +344,12 @@ export default function AlertsPage() {
                     borderLeft: `2px solid ${sevColors[n.severity] || 'var(--border)'}`,
                     opacity: n.is_read ? 0.6 : 1,
                   }}>
-                    {/* Timeline dot */}
                     <div style={{
                       position: 'absolute', left: '-19px', top: '14px',
                       width: '8px', height: '8px', borderRadius: '50%',
                       background: sevColors[n.severity] || 'var(--text-muted)',
                       border: '2px solid var(--bg)',
                     }} />
-
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>

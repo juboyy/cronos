@@ -157,8 +157,9 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} style={S.form}>
           <div>
-            <label style={S.label}>Email</label>
+            <label htmlFor="email" style={S.label}>Email</label>
             <input
+              id="email"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
@@ -166,12 +167,14 @@ export default function LoginPage() {
               style={S.input}
               required
               autoFocus
+              disabled={loading}
             />
           </div>
 
           <div>
-            <label style={S.label}>Senha</label>
+            <label htmlFor="password" style={S.label}>Senha</label>
             <input
+              id="password"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -179,13 +182,14 @@ export default function LoginPage() {
               style={S.input}
               required
               minLength={6}
+              disabled={loading}
             />
           </div>
 
           {error && <div style={S.error}>{error}</div>}
 
           <button type="submit" style={{ ...S.button, opacity: loading ? 0.6 : 1 }} disabled={loading}>
-            {loading ? '...' : mode === 'login' ? 'Entrar' : 'Criar Conta'}
+            {loading ? 'Entrando...' : mode === 'login' ? 'Entrar' : 'Criar Conta'}
           </button>
         </form>
 

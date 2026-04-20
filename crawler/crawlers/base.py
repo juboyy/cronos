@@ -4,6 +4,9 @@ import urllib.error
 import json
 import time
 import random
+import re
+import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime
 from config import REQUEST_TIMEOUT, MAX_RETRIES, USER_AGENTS, JINA_API_KEY
 
 
@@ -18,6 +21,26 @@ class BaseCrawler:
             'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
         }
 
+    def _decode_response(self, resp):
+        """Decode HTTP response using charset from Content-Type, falling back to utf-8 then latin-1."""
+        raw_bytes = resp.read()
+        ct = resp.headers.get('Content-Type', '')
+        charset = None
+        for part in ct.split(';'):
+            part = part.strip()
+            if part.lower().startswith('charset='):
+                charset = part.split('=', 1)[1].strip().strip('"')
+                break
+        if charset:
+            try:
+                return raw_bytes.decode(charset)
+            except (UnicodeDecodeError, LookupError):
+                pass
+        try:
+            return raw_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            return raw_bytes.decode('latin-1')
+
     def _fetch_url(self, url, timeout=None):
         """Fetch URL with retries and exponential backoff."""
         timeout = timeout or REQUEST_TIMEOUT
@@ -26,7 +49,7 @@ class BaseCrawler:
             try:
                 req = urllib.request.Request(url, headers=self._get_headers())
                 resp = urllib.request.urlopen(req, timeout=timeout)
-                return resp.read().decode('utf-8', errors='replace')
+                return self._decode_response(resp)
             except Exception as e:
                 last_err = e
                 wait = (2 ** attempt) + random.random()
@@ -36,26 +59,67 @@ class BaseCrawler:
         return None
 
     def _fetch_via_jina(self, url):
-        """Fetch URL via Jina Reader API — bypasses blocks, JS rendering, anti-bot."""
         if not JINA_API_KEY:
             print(f'  [{self.name}] No Jina API key — skipping Jina fallback')
             return None
 
-        jina_url = f'https://r.jina.ai/{url}'
-        req = urllib.request.Request(jina_url, headers={
-            'Authorization': f'Bearer {JINA_API_KEY}',
-            'Accept': 'application/json',
-            'X-Return-Format': 'text',
-        })
-
         try:
+            jina_url = f'https://r.jina.ai/{url}'
+            req = urllib.request.Request(jina_url, headers={
+                'Authorization': f'Bearer {JINA_API_KEY}',
+                'Accept': 'application/json',
+                'X-Return-Format': 'text',
+            })
             resp = urllib.request.urlopen(req, timeout=30)
-            content = resp.read().decode('utf-8', errors='replace')
+            content = self._decode_response(resp)
             print(f'  [{self.name}] Jina fetched {len(content)} chars')
             return content
         except Exception as e:
             print(f'  [{self.name}] Jina error: {e}')
             return None
+
+    def _parse_rss(self, raw):
+        """Common RSS parsing logic with XML cleaning and date normalization."""
+        articles = []
+        try:
+            root = ET.fromstring(raw)
+        except ET.ParseError:
+            raw = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', raw)
+            try:
+                root = ET.fromstring(raw)
+            except ET.ParseError as e:
+                print(f'  [{self.name}] XML parse error: {e}')
+                return []
+
+        for item in root.iter('item'):
+            title = item.findtext('title', '').strip()
+            link = item.findtext('link', '').strip()
+            desc = item.findtext('description', '').strip()
+            pub_date = item.findtext('pubDate', '')
+
+            if not title or not link:
+                continue
+
+            # Clean HTML from description
+            summary = re.sub(r'<[^>]+>', '', desc).strip()
+
+            # Normalize published date to ISO format
+            published_at = None
+            if pub_date:
+                try:
+                    published_at = parsedate_to_datetime(pub_date).isoformat()
+                except Exception:
+                    pass
+
+            articles.append({
+                'source': self.name,
+                'url': link,
+                'title': title,
+                'summary': summary[:1000] if summary else None,
+                'content': None,
+                'published_at': published_at
+            })
+        return articles
 
     def _fetch_with_fallback(self, url, timeout=None):
         """Try direct fetch first, fall back to Jina if it fails."""

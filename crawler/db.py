@@ -23,13 +23,8 @@ def _post(table, data, prefer='return=minimal'):
         data=body,
         headers=_headers({'Prefer': prefer}),
     )
-    try:
-        resp = urllib.request.urlopen(req, timeout=10)
-        return resp.status
-    except urllib.error.HTTPError as e:
-        err = e.read().decode()[:200]
-        print(f'  DB error ({table}): {e.code} — {err}')
-        return e.code
+    resp = urllib.request.urlopen(req, timeout=10)
+    return resp.status
 
 
 def check_article_exists(url):
@@ -39,12 +34,9 @@ def check_article_exists(url):
         f'{SUPABASE_URL}/rest/v1/cronos_articles?url=eq.{encoded}&select=id&limit=1',
         headers=_headers(),
     )
-    try:
-        resp = urllib.request.urlopen(req, timeout=10)
-        data = json.loads(resp.read())
-        return len(data) > 0
-    except Exception:
-        return False
+    resp = urllib.request.urlopen(req, timeout=10)
+    data = json.loads(resp.read())
+    return len(data) > 0
 
 
 def insert_article(article):
@@ -55,14 +47,9 @@ def insert_article(article):
         data=body,
         headers=_headers({'Prefer': 'resolution=merge-duplicates,return=representation'}),
     )
-    try:
-        resp = urllib.request.urlopen(req, timeout=10)
-        result = json.loads(resp.read())
-        return result[0]['id'] if result else None
-    except urllib.error.HTTPError as e:
-        err = e.read().decode()[:200]
-        print(f'  Insert article error: {e.code} — {err}')
-        return None
+    resp = urllib.request.urlopen(req, timeout=10)
+    result = json.loads(resp.read())
+    return result[0]['id'] if result else None
 
 
 def insert_entity(entity):
@@ -73,14 +60,9 @@ def insert_entity(entity):
         data=body,
         headers=_headers({'Prefer': 'resolution=merge-duplicates,return=representation'}),
     )
-    try:
-        resp = urllib.request.urlopen(req, timeout=10)
-        result = json.loads(resp.read())
-        return result[0]['id'] if result else None
-    except urllib.error.HTTPError as e:
-        err = e.read().decode()[:200]
-        print(f'  Insert entity error: {e.code} — {err}')
-        return None
+    resp = urllib.request.urlopen(req, timeout=10)
+    result = json.loads(resp.read())
+    return result[0]['id'] if result else None
 
 
 def get_entity_id(entity_type, value):
@@ -89,12 +71,9 @@ def get_entity_id(entity_type, value):
         f'{SUPABASE_URL}/rest/v1/cronos_entities?type=eq.{entity_type}&value=eq.{urllib.parse.quote(value)}&select=id&limit=1',
         headers=_headers(),
     )
-    try:
-        resp = urllib.request.urlopen(req, timeout=10)
-        data = json.loads(resp.read())
-        return data[0]['id'] if data else None
-    except Exception:
-        return None
+    resp = urllib.request.urlopen(req, timeout=10)
+    data = json.loads(resp.read())
+    return data[0]['id'] if data else None
 
 
 def link_article_entity(article_id, entity_id, relevance=0.5, context=None):
@@ -112,10 +91,7 @@ def link_article_entity(article_id, entity_id, relevance=0.5, context=None):
         data=body,
         headers=_headers({'Prefer': 'resolution=merge-duplicates,return=minimal'}),
     )
-    try:
-        urllib.request.urlopen(req, timeout=10)
-    except Exception:
-        pass
+    urllib.request.urlopen(req, timeout=10)
 
 
 def insert_sentiment(article_id, score, label, confidence=0.5, model='gemini-flash'):

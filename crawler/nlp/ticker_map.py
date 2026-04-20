@@ -55,36 +55,30 @@ TICKER_MAP = {
 
 KNOWN_TICKERS = set(TICKER_MAP.keys())
 
-# Yahoo Finance symbol mapping: B3 ticker → Yahoo symbol
-# Handles suffix (.SA), name changes, and legacy symbols
 YAHOO_SYMBOL_MAP = {
-    # Standard B3 tickers → Yahoo (append .SA)
     **{t: f'{t}.SA' for t in TICKER_MAP.keys()},
-    # Units (11) need special handling
     'BPAC11': 'BPAC11.SA',
     'KLBN11': 'KLBN11.SA',
     'TAEE11': 'TAEE11.SA',
     'IGTI11': 'IGTI11.SA',
-    # Legacy / renamed symbols → correct Yahoo symbol
-    'JBSS3': 'JBSS3.SA',    # JBS — sometimes shows as JBSS3.SA
-    'CIEL3': 'CIEL3.SA',    # Cielo — delisted but historical data available
-    'NATU3': 'NTCO3.SA',    # Natura (old ticker → Natura&Co)
-    'BRML3': 'ALSO3.SA',    # BR Malls → Aliansce Sonae
-    'LAME4': 'LAME4.SA',    # Lojas Americanas (pre-RJ)
+    'JBSS3': 'JBSS3.SA',
+    'CIEL3': 'CIEL3.SA',
+    'NATU3': 'NTCO3.SA',
+    'BRML3': 'ALSO3.SA',
+    'LAME4': 'LAME4.SA',
     'LAME3': 'LAME3.SA',
-    'BTOW3': 'AMER3.SA',    # B2W → Americanas
-    'AMER3': 'AMER3.SA',    # Americanas
-    'HYPE3': 'HYPE3.SA',    # Hypera
-    'QUAL3': 'QUAL3.SA',    # Qualicorp
-    'GNDI3': 'HAPV3.SA',    # NotreDame → merged into Hapvida
-    'SULA11': 'SULA11.SA',  # Sul América
-    'TIMP3': 'VIVT3.SA',    # TIM → Vivo (post-merger ticker)
+    'BTOW3': 'AMER3.SA',
+    'AMER3': 'AMER3.SA',
+    'HYPE3': 'HYPE3.SA',
+    'QUAL3': 'QUAL3.SA',
+    'GNDI3': 'HAPV3.SA',
+    'SULA11': 'SULA11.SA',
+    'TIMP3': 'VIVT3.SA',
 }
 
-# Reverse: Yahoo symbol → B3 ticker (for data normalization)
 YAHOO_TO_B3 = {}
 for b3, yf in YAHOO_SYMBOL_MAP.items():
-    YAHOO_TO_B3.setdefault(yf, b3)  # first mapping wins
+    YAHOO_TO_B3.setdefault(yf, b3)
 
 
 def b3_to_yahoo(ticker: str) -> str:

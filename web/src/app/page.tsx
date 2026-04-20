@@ -1,43 +1,38 @@
 import { supabaseQuery } from '@/lib/supabase';
 import { ArticleFeed } from '@/components/ArticleFeed';
+import { Article, Entity, Sentiment, Macro, Impact, Price } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 async function getData() {
   const [articles, entities, sentiments, macro, impacts, prices] = await Promise.all([
-    supabaseQuery('cronos_articles', 'select=id,title,source,summary,published_at,url,cronos_sentiment(score,label)&order=published_at.desc.nullslast&limit=25'),
-    supabaseQuery('cronos_entities', 'select=id,type,value,canonical_name,sector&type=eq.ticker&limit=15'),
-    supabaseQuery('cronos_sentiment', 'select=score,label&limit=200'),
-    supabaseQuery('cronos_macro', 'select=indicator,value,date&order=date.desc&limit=30'),
-    supabaseQuery('cronos_impacts', 'select=ticker,impact_score,delta_1d,volume_anomaly&order=impact_score.desc&limit=8'),
-    supabaseQuery('cronos_prices', 'select=ticker,date,close,volume&order=date.desc&limit=60'),
+    supabaseQuery('cronos_articles', 'select=id,title,source,summary,published_at,url,cronos_sentiment(score,label)&order=published_at.desc.nullslast&limit=25') as Promise<Article[]>,
+    supabaseQuery('cronos_entities', 'select=id,type,value,canonical_name,sector&type=eq.ticker&limit=15') as Promise<Entity[]>,
+    supabaseQuery('cronos_sentiment', 'select=score,label&limit=200') as Promise<Sentiment[]>,
+    supabaseQuery('cronos_macro', 'select=indicator,value,date&order=date.desc&limit=30') as Promise<Macro[]>,
+    supabaseQuery('cronos_impacts', 'select=ticker,impact_score,delta_1d,volume_anomaly&order=impact_score.desc&limit=8') as Promise<Impact[]>,
+    supabaseQuery('cronos_prices', 'select=ticker,date,close,volume&order=date.desc&limit=60') as Promise<Price[]>,
   ]);
 
-  // Aggregate sentiment
-  const scores = sentiments.map((s: any) => s.score).filter(Boolean);
-  const avgSent = scores.length > 0 ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length : 0;
-  const posPct = scores.length > 0 ? Math.round(scores.filter((s: number) => s > 0.05).length / scores.length * 100) : 0;
-  const negPct = scores.length > 0 ? Math.round(scores.filter((s: number) => s < -0.05).length / scores.length * 100) : 0;
+  const scores = sentiments.map((s) => s.score).filter(Boolean);
+  const avgSent = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+  const posPct = scores.length > 0 ? Math.round(scores.filter((s) => s > 0.05).length / scores.length * 100) : 0;
+  const negPct = scores.length > 0 ? Math.round(scores.filter((s) => s < -0.05).length / scores.length * 100) : 0;
 
-  // Deduplicate macro by indicator
-  const macroMap: Record<string, any> = {};
+  const macroMap: Record<string, Macro> = {};
   for (const m of macro) { if (!macroMap[m.indicator]) macroMap[m.indicator] = m; }
 
-  // Price deltas by ticker
-  const priceMap: Record<string, any[]> = {};
+  const priceMap: Record<string, Price[]> = {};
   for (const p of prices) { if (!priceMap[p.ticker]) priceMap[p.ticker] = []; priceMap[p.ticker].push(p); }
 
-  // Get total article count
   let totalArticles = articles.length;
-  try {
-    const countUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://apkflemxmsbdltziouls.supabase.co'}/rest/v1/cronos_articles?select=id&head=true`;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-    const cRes = await fetch(countUrl, {
-      headers: { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Prefer': 'count=exact' },
-      next: { revalidate: 60 },
-    });
-    totalArticles = parseInt(cRes.headers.get('content-range')?.split('/')[1] || '0', 10) || articles.length;
-  } catch { /* fallback */ }
+  const countUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://apkflemxmsbdltziouls.supabase.co'}/rest/v1/cronos_articles?select=id&head=true`;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  const cRes = await fetch(countUrl, {
+    headers: { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Prefer': 'count=exact' },
+    next: { revalidate: 60 },
+  });
+  totalArticles = parseInt(cRes.headers.get('content-range')?.split('/')[1] || '0', 10) || articles.length;
 
   return { articles, entities, avgSent, posPct, negPct, sentimentCount: scores.length, macroMap, impacts, priceMap, totalArticles };
 }
@@ -71,7 +66,7 @@ function SentimentDot({ score }: { score: number }) {
 export default async function IntelligencePage() {
   const { articles, entities, avgSent, posPct, negPct, sentimentCount, macroMap, impacts, priceMap, totalArticles } = await getData();
 
-  const macroEntries = Object.entries(macroMap) as [string, any][];
+  const macroEntries = Object.entries(macroMap) as [string, Macro][];
   const macroLabels: Record<string, string> = { selic: 'Selic', ipca: 'IPCA', usdbrl: 'USD/BRL', cdi: 'CDI', ibov: 'Ibovespa', dxy: 'DXY' };
   const macroFormats: Record<string, (v: number) => string> = {
     selic: (v) => `${v.toFixed(2)}%`,
@@ -81,6 +76,24 @@ export default async function IntelligencePage() {
     ibov: (v) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }),
     dxy: (v) => v.toFixed(2),
   };
+
+  const sourceColors: Record<string, string> = {
+    infomoney: 'hsl(25 80% 55%)', valor: 'hsl(210 60% 55%)', reuters: 'hsl(0 70% 55%)',
+    bcb: 'hsl(150 50% 45%)', b3: 'hsl(45 70% 50%)', moneytimes: 'hsl(280 50% 55%)',
+    investing_br: 'hsl(200 70% 50%)', exame: 'hsl(330 60% 55%)', estadao: 'hsl(220 40% 50%)',
+    folha: 'hsl(175 50% 45%)', seudinheiro: 'hsl(40 60% 50%)',
+  };
+
+  const sourceStats = articles.reduce((acc: Record<string, { count: number, latest: string }>, art) => {
+    const s = art.source.toLowerCase().replace(/ /g, '_');
+    if (!acc[s]) acc[s] = { count: 0, latest: art.published_at };
+    acc[s].count++;
+    if (new Date(art.published_at) > new Date(acc[s].latest)) acc[s].latest = art.published_at;
+    return acc;
+  }, {});
+
+  const sortedSources = Object.entries(sourceStats)
+    .sort((a, b) => b[1].count - a[1].count);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
@@ -173,7 +186,7 @@ export default async function IntelligencePage() {
                 Top Impact
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {impacts.slice(0, 6).map((imp: any, i: number) => {
+                {impacts.slice(0, 6).map((imp, i: number) => {
                   const barW = Math.min(imp.impact_score * 100, 100);
                   return (
                     <a
@@ -221,7 +234,7 @@ export default async function IntelligencePage() {
               Tracked Entities
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {entities.map((e: any) => {
+              {entities.map((e) => {
                 const prices = priceMap[e.value];
                 let delta = 0;
                 if (prices && prices.length >= 2) {
@@ -261,19 +274,22 @@ export default async function IntelligencePage() {
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '12px' }}>
               Sources
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {[
-                { name: 'InfoMoney', color: 'hsl(25 80% 55%)' },
-                { name: 'Valor Econômico', color: 'hsl(210 60% 55%)' },
-                { name: 'B3', color: 'hsl(45 70% 50%)' },
-                { name: 'Banco Central', color: 'hsl(150 50% 45%)' },
-                { name: 'Reuters Brasil', color: 'hsl(0 70% 55%)' },
-              ].map((s) => (
-                <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ width: '3px', height: '12px', background: s.color, borderRadius: '1px', flexShrink: 0 }} />
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)' }}>{s.name}</span>
-                </div>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {sortedSources.map(([id, stats]) => {
+                const originalName = articles.find((a) => a.source.toLowerCase().replace(/ /g, '_') === id)?.source || id;
+                return (
+                  <div key={id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '8px', height: '8px', background: sourceColors[id] || 'var(--text-muted)', borderRadius: '50%', flexShrink: 0 }} />
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>{originalName}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)' }}>{stats.count}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-tertiary)' }}>• {formatTime(stats.latest)}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </aside>

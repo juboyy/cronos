@@ -1,50 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-
-interface Correlation {
-  id: string;
-  entity_value: string;
-  entity_type: string;
-  source_count: number;
-  sources: any;
-  avg_sentiment: number;
-  sentiment_consensus: number;
-  signal_strength: number;
-  window_start: string;
-  window_end: string;
-  created_at: string;
-}
-
-interface Cluster {
-  id: string;
-  cluster_type: string;
-  title: string;
-  article_ids: any;
-  entity_ids: any;
-  sources: any;
-  article_count: number;
-  avg_sentiment: number;
-  dominant_sentiment: string;
-  window_minutes: number;
-  window_start: string;
-  window_end: string;
-  keywords: any;
-  created_at: string;
-}
-
-interface Briefing {
-  id: string;
-  date: string;
-  summary: string;
-  top_entities: any;
-  top_correlations: any;
-  top_clusters: any;
-  market_mood: number;
-  article_count: number;
-  source_breakdown: any;
-  alerts_fired: number;
-}
+import { Correlation, Cluster, Briefing } from '@/lib/types';
+import { timeAgo } from '@/lib/utils';
 
 interface Props {
   correlations: Correlation[];
@@ -52,11 +10,11 @@ interface Props {
   briefings: Briefing[];
 }
 
-function parseJSON(val: any): any {
+function parseJSON<T>(val: T | string): T {
   if (typeof val === 'string') {
-    try { return JSON.parse(val); } catch { return val; }
+    return JSON.parse(val);
   }
-  return val || [];
+  return val as T;
 }
 
 function SignalBar({ value, max = 5 }: { value: number; max?: number }) {
@@ -77,17 +35,9 @@ function SentimentDot({ value }: { value: number | null }) {
 }
 
 function TimeAgo({ ts }: { ts: string }) {
-  if (!ts) return <span>—</span>;
-  const d = new Date(ts);
-  const now = new Date();
-  const mins = Math.floor((now.getTime() - d.getTime()) / 60000);
-  let label = '';
-  if (mins < 60) label = `${mins}m atrás`;
-  else if (mins < 1440) label = `${Math.floor(mins / 60)}h atrás`;
-  else label = `${Math.floor(mins / 1440)}d atrás`;
   return (
     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)' }}>
-      {label}
+      {timeAgo(ts)} {ts ? 'atrás' : ''}
     </span>
   );
 }
@@ -164,8 +114,14 @@ function CorrelationCard({ c }: { c: Correlation }) {
       </div>
 
       {expanded && sources.length > 0 && (
-        <div style={{ marginTop: '12px', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
-          {sources.map((s: any, i: number) => (
+        <div style={{ 
+          marginTop: '12px', 
+          borderTop: '1px solid var(--border-subtle)', 
+          paddingTop: '12px',
+          maxHeight: '200px',
+          overflowY: 'auto'
+        }}>
+          {sources.map((s: { source: string; title: string; sentiment: number }, i: number) => (
             <div key={i} style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -323,7 +279,7 @@ function BriefingCard({ b }: { b: Briefing }) {
             TOP ENTIDADES
           </span>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
-            {topEnts.slice(0, 6).map((e: any, i: number) => (
+            {topEnts.slice(0, 6).map((e: { entity: string; mentions: number }, i: number) => (
               <span key={i} style={{
                 fontFamily: 'var(--font-mono)',
                 fontSize: '0.6875rem',
@@ -345,13 +301,13 @@ function BriefingCard({ b }: { b: Briefing }) {
             FONTES
           </span>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
-            {Object.entries(breakdown).sort((a: any, b: any) => b[1] - a[1]).map(([src, cnt]: any, i) => (
+            {Object.entries(breakdown).sort((a, b) => (b[1] as number) - (a[1] as number)).map(([src, cnt], i) => (
               <span key={i} style={{
                 fontFamily: 'var(--font-mono)',
                 fontSize: '0.625rem',
                 color: 'var(--text-muted)',
               }}>
-                {src}:{cnt}
+                {src}:{cnt as number}
               </span>
             ))}
           </div>

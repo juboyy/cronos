@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
       data,
       timestamp: new Date().toISOString(),
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json(
       { error: 'internal_error', message: e.message, timestamp: new Date().toISOString() },
       { status: 500 }

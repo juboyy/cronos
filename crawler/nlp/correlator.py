@@ -39,12 +39,8 @@ def upsert(table, data):
         headers={**HEADERS, 'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
         method='POST',
     )
-    try:
-        urllib.request.urlopen(req, timeout=15)
-        return True
-    except urllib.error.HTTPError as e:
-        print(f'  Upsert error: {e.code} — {e.read().decode()[:200]}')
-        return False
+    urllib.request.urlopen(req, timeout=15)
+    return True
 
 
 def run_correlations(window_hours=WINDOW_HOURS, lookback_hours=48):
@@ -53,7 +49,6 @@ def run_correlations(window_hours=WINDOW_HOURS, lookback_hours=48):
 
     print(f'[CORRELATOR] Loading recent articles (last {lookback_hours}h)...')
 
-    # Get articles with their entities and sentiments
     articles = query('cronos_articles',
         f'select=id,title,source,published_at,url,'
         f'cronos_article_entities(entity_id,relevance),'
@@ -68,11 +63,9 @@ def run_correlations(window_hours=WINDOW_HOURS, lookback_hours=48):
 
     print(f'  Loaded {len(articles)} articles')
 
-    # Load entity details
     entities = query('cronos_entities', 'select=id,type,value,canonical_name&limit=500')
     entity_map = {e['id']: e for e in entities}
 
-    # Group articles by entity
     entity_articles = defaultdict(list)
     for art in articles:
         links = art.get('cronos_article_entities') or []
@@ -90,7 +83,6 @@ def run_correlations(window_hours=WINDOW_HOURS, lookback_hours=48):
                 'relevance': link.get('relevance', 0.5),
             })
 
-    # Find cross-source correlations
     correlations = []
     for eid, arts in entity_articles.items():
         sources = set(a['source'] for a in arts)
@@ -152,13 +144,10 @@ def run_correlations(window_hours=WINDOW_HOURS, lookback_hours=48):
 
     # Clear stale correlations before inserting fresh batch
     if correlations:
-        try:
-            clear_url = f'{SUPABASE_URL}/rest/v1/cronos_correlations?id=neq.00000000-0000-0000-0000-000000000000'
-            clear_req = urllib.request.Request(clear_url, method='DELETE', headers=HEADERS)
-            urllib.request.urlopen(clear_req, timeout=10)
-            print(f'  Cleared old correlations')
-        except Exception as e:
-            print(f'  Warning: could not clear old correlations: {e}')
+        clear_url = f'{SUPABASE_URL}/rest/v1/cronos_correlations?id=neq.00000000-0000-0000-0000-000000000000'
+        clear_req = urllib.request.Request(clear_url, method='DELETE', headers=HEADERS)
+        urllib.request.urlopen(clear_req, timeout=10)
+        print(f'  Cleared old correlations')
 
     if correlations:
         print(f'\n[CORRELATOR] Found {len(correlations)} cross-source correlations:')
@@ -177,16 +166,13 @@ def run_correlations(window_hours=WINDOW_HOURS, lookback_hours=48):
             if c['source_count'] >= 3 or c['signal_strength'] > 1.5:
                 direction = 'Positivo' if c['avg_sentiment'] > 0 else 'Negativo'
                 sev = 'warning' if c['signal_strength'] > 2 else 'info'
-                try:
-                    upsert('cronos_notifications', {
-                        'type': 'correlation',
-                        'title': f'🔗 {c["entity_value"]}: {c["source_count"]} fontes convergem ({direction})',
-                        'body': f'Sinal: {c["signal_strength"]:.2f} | Consenso: {c["sentiment_consensus"]:.0%} | Sent: {c["avg_sentiment"]:.3f}',
-                        'severity': sev,
-                        'ticker': c['entity_value'] if c['entity_type'] == 'ticker' else None,
-                    })
-                except Exception:
-                    pass
+                upsert('cronos_notifications', {
+                    'type': 'correlation',
+                    'title': f'🔗 {c["entity_value"]}: {c["source_count"]} fontes convergem ({direction})',
+                    'body': f'Sinal: {c["signal_strength"]:.2f} | Consenso: {c["sentiment_consensus"]:.0%} | Sent: {c["avg_sentiment"]:.3f}',
+                    'severity': sev,
+                    'ticker': c['entity_value'] if c['entity_type'] == 'ticker' else None,
+                })
     else:
         print('  No cross-source correlations found')
 

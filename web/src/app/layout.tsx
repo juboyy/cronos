@@ -6,6 +6,9 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Cronos 2.0 — Financial Intelligence Engine',
   description: 'Brazilian financial intelligence: real-time news, measurable impact, predictive simulation, deep search',
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

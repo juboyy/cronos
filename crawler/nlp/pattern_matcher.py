@@ -38,12 +38,8 @@ def _upsert(table, data):
         data=body,
         headers=_headers({'Prefer': 'resolution=merge-duplicates,return=minimal'}),
     )
-    try:
-        resp = urllib.request.urlopen(req, timeout=15)
-        return resp.status
-    except urllib.error.HTTPError as e:
-        print(f'  Pattern upsert error: {e.code}')
-        return e.code
+    resp = urllib.request.urlopen(req, timeout=15)
+    return resp.status
 
 
 def _classify_article(title, summary=''):
@@ -71,7 +67,6 @@ def run_pattern_matching(min_occurrences=3):
     """Identify and persist recurring patterns from impact data."""
     print('[PATTERNS] Analyzing recurring patterns...')
     
-    # Get all impacts with article data
     impacts = _query(
         'cronos_impacts',
         'select=ticker,delta_1d,delta_5d,impact_score,volume_anomaly,confidence,'
@@ -79,7 +74,6 @@ def run_pattern_matching(min_occurrences=3):
         '&impact_score=gt.0&order=created_at.desc&limit=500'
     )
     
-    # Group by ticker + pattern type
     groups = defaultdict(list)
     
     for imp in impacts:
@@ -105,7 +99,6 @@ def run_pattern_matching(min_occurrences=3):
             stats['skipped'] += 1
             continue
         
-        # Calculate statistics
         deltas = [e['delta_1d'] for e in entries if e['delta_1d'] is not None]
         scores = [e['impact_score'] for e in entries if e['impact_score']]
         
@@ -117,11 +110,9 @@ def run_pattern_matching(min_occurrences=3):
         std_dev = math.sqrt(sum((d - avg_impact) ** 2 for d in deltas) / len(deltas)) if len(deltas) > 1 else 0
         avg_confidence = sum(scores) / len(scores) if scores else 0
         
-        # Build description
         direction = 'alta' if avg_impact > 0 else 'queda'
         desc = f'Notícias de {ptype} → {ticker} {direction} média de {abs(avg_impact):.2f}%'
         
-        # Sample articles (most recent 3)
         samples = [
             {'title': e['title'][:100], 'date': e['date'], 'delta': e['delta_1d']}
             for e in sorted(entries, key=lambda x: x['date'] or '', reverse=True)[:3]

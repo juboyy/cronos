@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
       `select=*&order=date.desc&limit=${limit}`
     );
     return NextResponse.json(macro);
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

@@ -9,7 +9,6 @@ class ReutersCrawler(BaseCrawler):
     url = 'https://www.reuters.com/news/archive/brasilNews'
 
     def fetch(self):
-        # Try Google News RSS first (more reliable than direct Reuters)
         gn_url = 'https://news.google.com/rss/search?q=brasil+finan%C3%A7as+mercado&hl=pt-BR&gl=BR&ceid=BR:pt-419'
         raw = self._fetch_url(gn_url)
         if raw and '<item' in raw:
@@ -17,19 +16,16 @@ class ReutersCrawler(BaseCrawler):
             if articles:
                 return articles
 
-        # Try Reuters RSS
         raw = self._fetch_url('https://www.reuters.com/rssFeed/businessNews')
         if raw and '<item' in raw:
             articles = self._parse_rss(raw)
             if articles:
                 return articles
 
-        # Fallback: Jina Reader on Reuters Brazil
         raw = self._fetch_via_jina(self.url)
         if raw:
             return self._parse_jina_text(raw)
 
-        # Last resort: Jina on Google News Brazil finance
         raw = self._fetch_via_jina('https://news.google.com/search?q=brasil%20finan%C3%A7as%20mercado&hl=pt-BR&gl=BR')
         if raw:
             return self._parse_jina_text(raw)

@@ -5,14 +5,12 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '10'), 30);
 
   try {
-    // Get entities with most article links using PostgREST joins instead of exec_sql
     const entitiesRes = await fetch(
       `${SUPABASE_URL}/rest/v1/cronos_article_entities?select=entity_id,cronos_entities!inner(id,type,value,canonical_name,sector)&limit=500`,
       { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, next: { revalidate: 900 } }
     );
 
     if (!entitiesRes.ok) {
-      // Simple fallback: just list ticker entities
       const fallbackRes = await fetch(
         `${SUPABASE_URL}/rest/v1/cronos_entities?select=id,type,value,canonical_name,sector&type=eq.ticker&limit=${limit}`,
         { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
@@ -22,8 +20,7 @@ export async function GET(req: NextRequest) {
 
     const links = await entitiesRes.json();
 
-    // Aggregate mention counts client-side
-    const counts: Record<string, { entity: any; count: number }> = {};
+    const counts: Record<string, { entity: unknown; count: number }> = {};
     for (const link of links) {
       const e = link.cronos_entities;
       if (!e) continue;
@@ -37,7 +34,7 @@ export async function GET(req: NextRequest) {
       .map(c => ({ ...c.entity, mention_count: c.count }));
 
     return NextResponse.json({ trending });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

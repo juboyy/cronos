@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     const total = parseInt(countRes.headers.get('content-range')?.split('/')[1] || '0', 10);
 
     return NextResponse.json({ articles, total, offset, limit });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

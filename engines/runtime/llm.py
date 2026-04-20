@@ -48,7 +48,6 @@ def generate_json(prompt: str, system: str = '', temperature: float = 0.3, model
         return result
     
     text = result['text']
-    # Try to extract JSON from markdown code blocks
     if '```json' in text:
         text = text.split('```json')[1].split('```')[0].strip()
     elif '```' in text:

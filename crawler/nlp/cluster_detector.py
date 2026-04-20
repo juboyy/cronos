@@ -39,12 +39,8 @@ def insert(table, data):
         headers={**HEADERS, 'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
         method='POST',
     )
-    try:
-        urllib.request.urlopen(req, timeout=15)
-        return True
-    except urllib.error.HTTPError as e:
-        print(f'  Insert error: {e.code} — {e.read().decode()[:200]}')
-        return False
+    urllib.request.urlopen(req, timeout=15)
+    return True
 
 
 def _extract_keywords(titles, top_n=5):
@@ -124,19 +120,13 @@ def run_clustering(lookback_hours=72):
             t0 = arts[i].get('published_at')
             if not t0:
                 continue
-            try:
-                t0_dt = datetime.fromisoformat(t0.replace('Z', '+00:00').replace('+00:00', ''))
-            except Exception:
-                continue
+            t0_dt = datetime.fromisoformat(t0.replace('Z', '+00:00').replace('+00:00', ''))
 
             for j in range(i, len(arts)):
                 tj = arts[j].get('published_at')
                 if not tj:
                     continue
-                try:
-                    tj_dt = datetime.fromisoformat(tj.replace('Z', '+00:00').replace('+00:00', ''))
-                except Exception:
-                    continue
+                tj_dt = datetime.fromisoformat(tj.replace('Z', '+00:00').replace('+00:00', ''))
 
                 if (tj_dt - t0_dt).total_seconds() <= 6 * 3600:
                     window.append(arts[j])
@@ -205,12 +195,9 @@ def run_clustering(lookback_hours=72):
 
     if unique_clusters:
         # Clear stale clusters before inserting
-        try:
-            clear_url = f'{SUPABASE_URL}/rest/v1/cronos_clusters?id=neq.00000000-0000-0000-0000-000000000000'
-            clear_req = urllib.request.Request(clear_url, method='DELETE', headers=HEADERS)
-            urllib.request.urlopen(clear_req, timeout=10)
-        except Exception:
-            pass
+        clear_url = f'{SUPABASE_URL}/rest/v1/cronos_clusters?id=neq.00000000-0000-0000-0000-000000000000'
+        clear_req = urllib.request.Request(clear_url, method='DELETE', headers=HEADERS)
+        urllib.request.urlopen(clear_req, timeout=10)
 
         print(f'\n[CLUSTERS] Found {len(unique_clusters)} clusters:')
         for c in unique_clusters[:10]:
@@ -222,15 +209,12 @@ def run_clustering(lookback_hours=72):
         # Notify on bursts
         for c in unique_clusters:
             if c['cluster_type'] == 'burst' and c['article_count'] >= 4:
-                try:
-                    insert('cronos_notifications', {
-                        'type': 'cluster',
-                        'title': c['title'],
-                        'body': f'{c["article_count"]} artigos, sentimento {c["dominant_sentiment"]}',
-                        'severity': 'warning',
-                    })
-                except Exception:
-                    pass
+                insert('cronos_notifications', {
+                    'type': 'cluster',
+                    'title': c['title'],
+                    'body': f'{c["article_count"]} artigos, sentimento {c["dominant_sentiment"]}',
+                    'severity': 'warning',
+                })
 
         print(f'  Saved {len(unique_clusters)} clusters')
     else:

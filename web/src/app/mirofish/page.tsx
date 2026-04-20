@@ -5,15 +5,36 @@ import { useState, useEffect } from 'react';
 const MIROFISH_FRONTEND = 'https://mirofish.216-238-124-248.nip.io';
 const MIROFISH_BACKEND = 'https://mirofish-api.216-238-124-248.nip.io';
 
-export default function MiroFishPage() {
-  const [status, setStatus] = useState<'loading' | 'online' | 'offline'>('loading');
-  const [view, setView] = useState<'app' | 'api'>('app');
+interface EngineStatus {
+  frontend: 'loading' | 'online' | 'offline';
+  backend: 'loading' | 'online' | 'offline';
+  simulations: number;
+}
 
-  useEffect(() => {
-    fetch(MIROFISH_FRONTEND, { mode: 'no-cors', signal: AbortSignal.timeout(5000) })
-      .then(() => setStatus('online'))
-      .catch(() => setStatus('offline'));
-  }, []);
+export default function MiroFishPage() {
+  const [engine, setEngine] = useState<EngineStatus>({ frontend: 'loading', backend: 'loading', simulations: 0 });
+  const [view, setView] = useState<'app' | 'status'>('app');
+
+  const checkHealth = async () => {
+    setEngine(prev => ({ ...prev, frontend: 'loading', backend: 'loading' }));
+    const [feOk, beData] = await Promise.all([
+      fetch(MIROFISH_FRONTEND, { mode: 'no-cors', signal: AbortSignal.timeout(5000) })
+        .then(() => true).catch(() => false),
+      fetch(`${MIROFISH_BACKEND}/health`, { signal: AbortSignal.timeout(5000) })
+        .then(r => r.ok ? r.json() : null).catch(() => null),
+    ]);
+    let simCount = 0;
+    try {
+      const simRes = await fetch(`${MIROFISH_BACKEND}/api/simulation/list`, { signal: AbortSignal.timeout(5000) });
+      if (simRes.ok) { const d = await simRes.json(); simCount = d.count ?? 0; }
+    } catch {}
+    setEngine({ frontend: feOk ? 'online' : 'offline', backend: beData ? 'online' : 'offline', simulations: simCount });
+  };
+
+  useEffect(() => { checkHealth(); }, []);
+
+  const status = engine.frontend === 'online' && engine.backend === 'online' ? 'online'
+    : engine.frontend === 'loading' || engine.backend === 'loading' ? 'loading' : 'offline';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
@@ -74,7 +95,7 @@ export default function MiroFishPage() {
         <div style={{ display: 'flex', gap: '2px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '2px' }}>
           {[
             { id: 'app' as const, label: 'Interface Completa' },
-            { id: 'api' as const, label: 'API Backend' },
+            { id: 'status' as const, label: 'Engine Status' },
           ].map((v) => (
             <button
               key={v.id}
@@ -119,7 +140,7 @@ export default function MiroFishPage() {
         </div>
       </div>
 
-      {/* Engine iframe */}
+      {/* Content */}
       {status === 'offline' ? (
         <div
           style={{
@@ -136,16 +157,12 @@ export default function MiroFishPage() {
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
             MiroFish engine está offline
           </p>
-          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)' }}>
-            Frontend: {MIROFISH_FRONTEND} | Backend: {MIROFISH_BACKEND}
-          </p>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)', display: 'flex', gap: '16px' }}>
+            <span>Frontend: {engine.frontend === 'online' ? '✅' : '❌'} {MIROFISH_FRONTEND}</span>
+            <span>Backend: {engine.backend === 'online' ? '✅' : '❌'} {MIROFISH_BACKEND}</span>
+          </div>
           <button
-            onClick={() => {
-              setStatus('loading');
-              fetch(MIROFISH_FRONTEND, { mode: 'no-cors', signal: AbortSignal.timeout(5000) })
-                .then(() => setStatus('online'))
-                .catch(() => setStatus('offline'));
-            }}
+            onClick={checkHealth}
             style={{
               fontFamily: 'var(--font-mono)',
               fontSize: '0.625rem',
@@ -160,10 +177,46 @@ export default function MiroFishPage() {
             Retry Connection
           </button>
         </div>
+      ) : view === 'status' ? (
+        <div style={{ flex: 1, padding: '24px', overflow: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', maxWidth: '900px' }}>
+            {[
+              { label: 'Frontend', url: MIROFISH_FRONTEND, status: engine.frontend },
+              { label: 'Backend API', url: MIROFISH_BACKEND, status: engine.backend },
+            ].map(s => (
+              <div key={s.label} style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '20px', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.label}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: s.status === 'online' ? '#22c55e' : '#ef4444' }}>
+                    {s.status === 'online' ? '● ONLINE' : '● OFFLINE'}
+                  </span>
+                </div>
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-tertiary)', margin: 0, wordBreak: 'break-all' }}>{s.url}</p>
+              </div>
+            ))}
+            <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '20px', border: '1px solid var(--border-subtle)' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Simulações</span>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '1.5rem', color: 'var(--accent)', margin: '8px 0 0' }}>{engine.simulations}</p>
+            </div>
+          </div>
+          <div style={{ marginTop: '24px' }}>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)', marginBottom: '8px' }}>API Endpoints Disponíveis:</p>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {[
+                'GET  /health',
+                'GET  /api/simulation/list',
+                'POST /api/simulation/create',
+                'POST /api/simulation/prepare',
+                'POST /api/graph/build',
+                'POST /api/graph/ontology/generate',
+                'GET  /api/graph/project/list',
+              ].map(ep => <span key={ep}>{ep}</span>)}
+            </div>
+          </div>
+        </div>
       ) : (
         <iframe
-          key={view}
-          src={view === 'app' ? MIROFISH_FRONTEND : MIROFISH_BACKEND}
+          src={MIROFISH_FRONTEND}
           style={{
             flex: 1,
             border: 'none',
@@ -171,7 +224,7 @@ export default function MiroFishPage() {
             background: '#0a0a0a',
           }}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          title={`MiroFish — ${view === 'app' ? 'Interface' : 'API'}`}
+          title="MiroFish — Interface"
         />
       )}
     </div>

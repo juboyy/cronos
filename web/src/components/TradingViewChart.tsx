@@ -9,6 +9,7 @@ import {
   HistogramSeries,
   createSeriesMarkers,
   type IChartApi,
+  type UTCTimestamp,
 } from 'lightweight-charts';
 
 interface PricePoint {
@@ -112,7 +113,7 @@ export default function TradingViewChart({ ticker, prices, events = [], height =
 
     areaSeries.setData(
       sorted.map(p => ({
-        time: p.date as any,
+        time: p.date as UTCTimestamp,
         value: p.close,
       }))
     );
@@ -133,7 +134,7 @@ export default function TradingViewChart({ ticker, prices, events = [], height =
         sorted
           .filter(p => p.volume && p.volume > 0)
           .map((p, i) => ({
-            time: p.date as any,
+            time: p.date as UTCTimestamp,
             value: p.volume!,
             color: p.close >= (sorted[Math.max(0, sorted.indexOf(p) - 1)]?.close ?? p.close)
               ? 'hsla(155, 60%, 45%, 0.25)'
@@ -151,10 +152,10 @@ export default function TradingViewChart({ ticker, prices, events = [], height =
         })
         .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
         .map(e => ({
-          time: e.time.split('T')[0] as any,
-          position: (e.score > 0 ? 'aboveBar' : 'belowBar') as any,
+          time: e.time.split('T')[0] as UTCTimestamp,
+          position: (e.score > 0 ? 'aboveBar' : 'belowBar') as 'aboveBar' | 'belowBar',
           color: e.score > 0.1 ? 'hsl(155 70% 55%)' : e.score < -0.1 ? 'hsl(0 65% 55%)' : 'hsl(45 70% 55%)',
-          shape: (e.score > 0.1 ? 'arrowUp' : e.score < -0.1 ? 'arrowDown' : 'circle') as any,
+          shape: (e.score > 0.1 ? 'arrowUp' : e.score < -0.1 ? 'arrowDown' : 'circle') as 'arrowUp' | 'arrowDown' | 'circle',
           text: e.title.length > 40 ? e.title.slice(0, 37) + '…' : e.title,
         }));
 

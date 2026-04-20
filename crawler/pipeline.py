@@ -53,12 +53,7 @@ def run_pipeline(sources=None, dry_run=False, run_impact=False, run_patterns=Fal
         print(f'\n[{source_name.upper()}] Crawling...')
         crawler = crawler_cls()
 
-        try:
-            articles = crawler.fetch()
-        except Exception as e:
-            print(f'  [ERROR] {source_name} fetch failed: {e}')
-            stats['errors'] += 1
-            continue
+        articles = crawler.fetch()
 
         print(f'  Found {len(articles)} articles')
         stats['crawled'] += len(articles)
@@ -67,7 +62,6 @@ def run_pipeline(sources=None, dry_run=False, run_impact=False, run_patterns=Fal
         for article in articles:
             if new_this_source >= MAX_NEW_PER_SOURCE:
                 break
-            try:
                 if not dry_run and check_article_exists(article['url']):
                     continue
 
@@ -122,28 +116,19 @@ def run_pipeline(sources=None, dry_run=False, run_impact=False, run_patterns=Fal
                     stats['sentiment'] += 1
                     time.sleep(0.5)
 
-                    # Auto-notify on strongly negative or positive sentiment
                     if abs(sentiment['score']) > 0.4:
-                        try:
-                            from alert_engine import _insert as _notif_insert
-                            sev = 'warning' if sentiment['score'] < -0.3 else 'info'
-                            direction = '📉 Negativo' if sentiment['score'] < 0 else '📈 Positivo'
-                            tickers = [e['value'] for e in entities if e.get('type') == 'ticker']
-                            _notif_insert('cronos_notifications', {
-                                'type': 'sentiment',
-                                'title': f'{direction}: {article["title"][:60]}',
-                                'body': f'Score: {sentiment["score"]:.3f} | Fonte: {article.get("source", "?")}',
-                                'severity': sev,
-                                'ticker': tickers[0] if tickers else None,
-                                'article_id': article_id,
-                            })
-                        except Exception:
-                            pass  # notification is best-effort
-
-            except Exception as e:
-                print(f'  [ERROR] Processing article: {e}')
-                stats['errors'] += 1
-                continue
+                        from alert_engine import _insert as _notif_insert
+                        sev = 'warning' if sentiment['score'] < -0.3 else 'info'
+                        direction = '📉 Negativo' if sentiment['score'] < 0 else '📈 Positivo'
+                        tickers = [e['value'] for e in entities if e.get('type') == 'ticker']
+                        _notif_insert('cronos_notifications', {
+                            'type': 'sentiment',
+                            'title': f'{direction}: {article["title"][:60]}',
+                            'body': f'Score: {sentiment["score"]:.3f} | Fonte: {article.get("source", "?")}',
+                            'severity': sev,
+                            'ticker': tickers[0] if tickers else None,
+                            'article_id': article_id,
+                        })
 
     print(f'\n{"=" * 50}')
     print(f'Pipeline complete!')
@@ -153,52 +138,32 @@ def run_pipeline(sources=None, dry_run=False, run_impact=False, run_patterns=Fal
     print(f'  Sentiment: {stats["sentiment"]} analyzed')
     print(f'  Errors:  {stats["errors"]}')
 
-    # Post-processing
     if run_impact:
         print(f'\n--- Impact Scoring ---')
-        try:
-            from nlp.impact_scorer import run_impact_scoring
-            run_impact_scoring(limit=100)
-        except Exception as e:
-            print(f'  [ERROR] Impact scoring: {e}')
+        from nlp.impact_scorer import run_impact_scoring
+        run_impact_scoring(limit=100)
 
     if run_patterns:
         print(f'\n--- Pattern Matching ---')
-        try:
-            from nlp.pattern_matcher import run_pattern_matching
-            run_pattern_matching(min_occurrences=2)
-        except Exception as e:
-            print(f'  [ERROR] Pattern matching: {e}')
+        from nlp.pattern_matcher import run_pattern_matching
+        run_pattern_matching(min_occurrences=2)
 
     if run_alerts:
         print(f'\n--- Alert Engine ---')
-        try:
-            from alert_engine import run_alert_engine
-            run_alert_engine()
-        except Exception as e:
-            print(f'  [ERROR] Alert engine: {e}')
+        from alert_engine import run_alert_engine
+        run_alert_engine()
 
-    # Intelligence v2
     if run_impact or run_patterns:
         print(f'\n--- Cross-Source Correlator ---')
-        try:
-            from nlp.correlator import run_correlations
-            run_correlations()
-        except Exception as e:
-            print(f'  [ERROR] Correlator: {e}')
+        from nlp.correlator import run_correlations
+        run_correlations()
 
         print(f'\n--- Temporal Clusters ---')
-        try:
-            from nlp.cluster_detector import run_clustering
-            run_clustering()
-        except Exception as e:
-            print(f'  [ERROR] Cluster detector: {e}')
+        from nlp.cluster_detector import run_clustering
+        run_clustering()
 
         print(f'\n--- Daily Briefing ---')
-        try:
-            from nlp.briefing_generator import run_briefing
-            run_briefing()
-        except Exception as e:
-            print(f'  [ERROR] Briefing generator: {e}')
+        from nlp.briefing_generator import run_briefing
+        run_briefing()
 
     return stats

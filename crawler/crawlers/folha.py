@@ -17,15 +17,7 @@ class FolhaCrawler(BaseCrawler):
 
     def parse(self, raw):
         articles = []
-        try:
-            root = ET.fromstring(raw)
-        except ET.ParseError:
-            raw = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', raw)
-            try:
-                root = ET.fromstring(raw)
-            except ET.ParseError as e:
-                print(f'  [{self.name}] XML parse error: {e}')
-                return []
+        root = ET.fromstring(raw)
 
         ns = {'content': 'http://purl.org/rss/1.0/modules/content/'}
 
@@ -46,10 +38,7 @@ class FolhaCrawler(BaseCrawler):
 
             published_at = None
             if pub_date:
-                try:
-                    published_at = parsedate_to_datetime(pub_date).isoformat()
-                except Exception:
-                    published_at = None
+                published_at = parsedate_to_datetime(pub_date).isoformat()
 
             articles.append({
                 'source': self.name,

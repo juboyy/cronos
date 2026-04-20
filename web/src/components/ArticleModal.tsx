@@ -1,70 +1,24 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-
-/* ── Types ── */
-interface Entity {
-  id: string;
-  type: string;
-  value: string;
-  canonical_name?: string;
-  sector?: string;
-  relevance?: number;
-  context?: string;
-}
-
-interface Sentiment {
-  score: number;
-  label: string;
-  provider?: string;
-}
-
-interface Impact {
-  ticker: string;
-  impact_score: number;
-  delta_1d?: number;
-  volume_anomaly?: boolean;
-}
-
-interface RelatedArticle {
-  id: string;
-  title: string;
-  source: string;
-  published_at?: string;
-  url: string;
-}
-
-interface GraphNode {
-  id: string;
-  type: string;
-  label: string;
-  group: string;
-  sector?: string;
-}
-
-interface GraphEdge {
-  source: string;
-  target: string;
-  weight: number;
-  label?: string;
-}
+import { 
+  Entity, 
+  Sentiment, 
+  Impact, 
+  Article,
+  RelatedArticle,
+  GraphNode,
+  GraphEdge
+} from '@/lib/types';
 
 interface ArticleData {
-  article: {
-    id: string;
-    title: string;
-    source: string;
-    summary?: string;
-    content?: string;
-    published_at?: string;
-    url: string;
-  };
+  article: Article;
   entities: Entity[];
   sentiments: Sentiment[];
   impacts: Impact[];
   relatedArticles: RelatedArticle[];
   graph: { nodes: GraphNode[]; edges: GraphEdge[] };
-  transmissionChain: any[];
+  transmissionChain: { step: string; impact: string; confidence: number }[];
 }
 
 /* ── Helpers ── */
@@ -96,57 +50,263 @@ const typeEmoji: Record<string, string> = {
   ticker: '📊', company: '🏢', person: '👤', sector: '🏭', institution: '🏛️', country: '🌍', commodity: '⛏️',
 };
 
-/* ── Entity Graph (pure SVG, no deps) ── */
-function EntityGraph({ nodes, edges }: { nodes: GraphNode[]; edges: GraphEdge[] }) {
+/* ── Entity Graph (Force-Directed) ── */
+function EntityGraph({ nodes: initialNodes, edges: initialEdges }: { nodes: GraphNode[]; edges: GraphEdge[] }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const W = 560, H = 340;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [nodes, setNodes] = useState<GraphNode[]>([]);
+  const [edges, setEdges] = useState<GraphEdge[]>([]);
+  const [hoveredEdge, setHoveredEdge] = useState<{ label: string; x: number; y: number } | null>(null);
+  const dragRef = useRef<{ nodeId: string; offsetX: number; offsetY: number } | null>(null);
 
-  if (nodes.length < 2) return null;
+  const W = 724; // responsive based on modal width - container width is preferred
+  const H = 500;
 
-  // Simple force-layout positioning (deterministic, single pass)
-  const cx = W / 2, cy = H / 2;
-  const positioned = nodes.map((n, i) => {
-    if (i === 0) return { ...n, x: cx, y: cy }; // article node center
-    const angle = ((i - 1) / (nodes.length - 1)) * Math.PI * 2;
-    const r = Math.min(W, H) * 0.35;
-    return { ...n, x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
-  });
+  // Initialize simulation nodes
+  useEffect(() => {
+    const initializedNodes = initialNodes.map((n, i) => ({
+      ...n,
+      x: W / 2 + (Math.random() - 0.5) * 100,
+      y: H / 2 + (Math.random() - 0.5) * 100,
+      vx: 0,
+      vy: 0,
+      fx: null,
+      fy: null,
+    }));
+    setNodes(initializedNodes);
+    setEdges(initialEdges);
+  }, [initialNodes, initialEdges]);
 
-  const nodeMap = new Map(positioned.map(n => [n.id, n]));
+  useEffect(() => {
+    if (nodes.length === 0) return;
+
+    let animFrame: number;
+    const strength = 0.05;
+    const distance = 100;
+    const charge = -400;
+    const friction = 0.9;
+
+    const tick = () => {
+      setNodes(prevNodes => {
+        const nextNodes = prevNodes.map(n => ({ ...n, vx: n.vx || 0, vy: n.vy || 0 }));
+        const nodeMap = new Map(nextNodes.map(n => [n.id, n]));
+
+        for (let i = 0; i < nextNodes.length; i++) {
+          for (let j = i + 1; j < nextNodes.length; j++) {
+            const ni = nextNodes[i];
+            const nj = nextNodes[j];
+            const dx = nj.x! - ni.x!;
+            const dy = nj.y! - ni.y!;
+            const distSq = dx * dx + dy * dy || 1;
+            const dist = Math.sqrt(distSq);
+            const force = charge / distSq;
+            const fx = (dx / dist) * force;
+            const fy = (dy / dist) * force;
+            ni.vx! += fx;
+            ni.vy! += fy;
+            nj.vx! -= fx;
+            nj.vy! -= fy;
+          }
+        }
+
+        edges.forEach(edge => {
+          const s = nodeMap.get(edge.source);
+          const t = nodeMap.get(edge.target);
+          if (!s || !t) return;
+          const dx = t.x! - s.x!;
+          const dy = t.y! - s.y!;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const force = (dist - distance) * strength * edge.weight;
+          const fx = (dx / dist) * force;
+          const fy = (dy / dist) * force;
+          s.vx! += fx;
+          s.vy! += fy;
+          t.vx! -= fx;
+          t.vy! -= fy;
+        });
+
+        nextNodes.forEach(n => {
+          const dx = W / 2 - n.x!;
+          const dy = H / 2 - n.y!;
+          n.vx! += dx * 0.01;
+          n.vy! += dy * 0.01;
+        });
+
+        return nextNodes.map(n => {
+          if (n.fx !== null && n.fx !== undefined) {
+            return { ...n, x: n.fx, y: n.fy!, vx: 0, vy: 0 };
+          }
+          const vx = (n.vx! * friction);
+          const vy = (n.vy! * friction);
+          return {
+            ...n,
+            vx,
+            vy,
+            x: Math.max(20, Math.min(W - 20, n.x! + vx)),
+            y: Math.max(20, Math.min(H - 20, n.y! + vy)),
+          };
+        });
+      });
+      animFrame = requestAnimationFrame(tick);
+    };
+
+    animFrame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animFrame);
+  }, [edges, nodes.length]);
+
+  const handleMouseDown = (id: string, e: React.MouseEvent) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const CTM = svg.getScreenCTM();
+    if (!CTM) return;
+    const x = (e.clientX - CTM.e) / CTM.a;
+    const y = (e.clientY - CTM.f) / CTM.d;
+
+    const node = nodes.find(n => n.id === id);
+    if (!node) return;
+
+    dragRef.current = { nodeId: id, offsetX: node.x! - x, offsetY: node.y! - y };
+    setNodes(prev => prev.map(n => n.id === id ? { ...n, fx: node.x, fy: node.y } : n));
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragRef.current) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const CTM = svg.getScreenCTM();
+    if (!CTM) return;
+    const x = (e.clientX - CTM.e) / CTM.a;
+    const y = (e.clientY - CTM.f) / CTM.d;
+
+    const { nodeId, offsetX, offsetY } = dragRef.current;
+    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, fx: x + offsetX, fy: y + offsetY } : n));
+  };
+
+  const handleMouseUp = () => {
+    if (dragRef.current) {
+      const id = dragRef.current.nodeId;
+      setNodes(prev => prev.map(n => n.id === id ? { ...n, fx: null, fy: null } : n));
+      dragRef.current = null;
+    }
+  };
+
+  const getNodeRadius = (group: string) => {
+    switch (group) {
+      case 'article': return 18;
+      case 'sector': return 12;
+      case 'entity': return 10;
+      case 'impact': return 8;
+      default: return 10;
+    }
+  };
 
   const groupColors: Record<string, string> = {
-    article: 'var(--accent)', ticker: 'var(--signal-info)', company: 'hsl(280 50% 55%)',
-    sector: 'hsl(45 70% 50%)', person: 'hsl(330 60% 55%)', institution: 'hsl(150 50% 45%)',
-    country: 'hsl(200 60% 50%)', commodity: 'hsl(25 70% 50%)',
+    article: 'var(--accent)',
+    ticker: 'hsl(190 70% 50%)',
+    company: 'hsl(280 50% 55%)',
+    sector: 'hsl(45 70% 50%)',
+    person: 'hsl(330 60% 55%)',
+    institution: 'hsl(150 50% 45%)',
+    event: 'hsl(270 60% 55%)',
+    impact: 'hsl(0 60% 50%)',
+    related_article: 'hsl(210 40% 40%)',
   };
 
   return (
-    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', maxHeight: '340px' }}>
-      {/* Edges */}
-      {edges.map((e, i) => {
-        const s = nodeMap.get(e.source);
-        const t = nodeMap.get(e.target);
-        if (!s || !t) return null;
-        return (
-          <line key={i} x1={s.x} y1={s.y} x2={t.x} y2={t.y}
-            stroke="var(--border)" strokeWidth={Math.max(e.weight * 2, 0.5)} strokeOpacity={0.5} />
-        );
-      })}
-      {/* Nodes */}
-      {positioned.map((n) => {
-        const r = n.group === 'article' ? 18 : 10;
-        const color = groupColors[n.group] || 'var(--text-muted)';
-        return (
-          <g key={n.id}>
-            <circle cx={n.x} cy={n.y} r={r} fill={color} fillOpacity={0.15} stroke={color} strokeWidth={1.5} />
-            <text x={n.x} y={n.y + r + 12} textAnchor="middle" fill="var(--text-tertiary)"
-              fontSize={n.group === 'article' ? 8 : 9} fontFamily="var(--font-mono)">
-              {(n.label || '').slice(0, 20)}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+    <div 
+      ref={containerRef}
+      style={{ position: 'relative', width: '100%', minHeight: '500px', background: 'hsl(225 15% 4%)', borderRadius: 'var(--radius)' }}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
+      <svg 
+        ref={svgRef} 
+        viewBox={`0 0 ${W} ${H}`} 
+        style={{ width: '100%', height: '500px', cursor: dragRef.current ? 'grabbing' : 'default' }}
+        role="img"
+        aria-label="Grafo de entidades do artigo"
+      >
+        <defs>
+          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
+
+        {/* Edges */}
+        {edges.map((e, i) => {
+          const s = nodes.find(n => n.id === e.source);
+          const t = nodes.find(n => n.id === e.target);
+          if (!s || !t || s.x === undefined || t.x === undefined) return null;
+          return (
+            <line 
+              key={i} 
+              x1={s.x} y1={s.y} x2={t.x} y2={t.y}
+              stroke="var(--border)" 
+              strokeWidth={Math.max(e.weight * 2, 0.5)} 
+              strokeOpacity={0.5}
+              onMouseEnter={(evt) => e.label && setHoveredEdge({ label: e.label, x: evt.clientX, y: evt.clientY })}
+              onMouseLeave={() => setHoveredEdge(null)}
+              style={{ transition: 'stroke-opacity 0.2s' }}
+            />
+          );
+        })}
+
+        {/* Nodes */}
+        {nodes.map((n) => {
+          if (n.x === undefined) return null;
+          const r = getNodeRadius(n.group);
+          const color = groupColors[n.group] || 'var(--text-muted)';
+          return (
+            <g 
+              key={n.id} 
+              onMouseDown={(e) => handleMouseDown(n.id, e)}
+              style={{ cursor: 'grab' }}
+            >
+              <circle 
+                cx={n.x} cy={n.y} r={r} 
+                fill={color} fillOpacity={0.15} 
+                stroke={color} strokeWidth={1.5} 
+                filter="url(#glow)"
+              />
+              <text 
+                x={n.x} y={n.y + r + 14} 
+                textAnchor="middle" 
+                fill="var(--text-tertiary)"
+                fontSize={n.group === 'article' ? 10 : 9} 
+                fontFamily="var(--font-mono)"
+                pointerEvents="none"
+                style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
+              >
+                {(n.label || '').slice(0, 24)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Tooltip for edges */}
+      {hoveredEdge && (
+        <div style={{
+          position: 'fixed',
+          left: hoveredEdge.x + 10,
+          top: hoveredEdge.y + 10,
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border)',
+          padding: '4px 8px',
+          borderRadius: 'var(--radius-sm)',
+          fontSize: '0.625rem',
+          fontFamily: 'var(--font-mono)',
+          color: 'var(--text-primary)',
+          pointerEvents: 'none',
+          zIndex: 100,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+        }}>
+          {hoveredEdge.label}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -219,7 +379,7 @@ export function ArticleModal({ articleId, onClose }: { articleId: string; onClos
               <div style={{ color: 'var(--signal-down)', ...S.mono, fontSize: '0.875rem' }}>Erro: {error}</div>
             ) : (
               <>
-                <h2 style={{ fontSize: '1.125rem', lineHeight: 1.35, marginBottom: '8px', color: 'var(--text-primary)' }}>
+                <h2 style={{ fontSize: '1.125rem', lineHeight: 1.35, marginBottom: '8px', color: 'var(--text-primary)', fontFamily: 'var(--font-serif)' }}>
                   {data!.article.title}
                 </h2>
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -284,7 +444,7 @@ export function ArticleModal({ articleId, onClose }: { articleId: string; onClos
                 <div style={{ ...S.label, marginBottom: '10px' }}>Grafo de Entidades</div>
                 <div style={{
                   background: 'var(--bg)', border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius)', padding: '16px', overflow: 'hidden',
+                  borderRadius: 'var(--radius)', overflow: 'hidden',
                 }}>
                   <EntityGraph nodes={data.graph.nodes} edges={data.graph.edges} />
                 </div>

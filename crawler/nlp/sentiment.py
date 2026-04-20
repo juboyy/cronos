@@ -16,12 +16,10 @@ SENTIMENT_PROMPT = (
     'Headline: {text}'
 )
 
-# Rate limiting state
 _last_call = 0
 _min_interval = 1.5  # seconds between Gemini calls
 _consecutive_429s = 0
 
-# Portuguese keyword lexicon for fast fallback
 _POSITIVE = {
     'alta','altas','sobe','subiu','subiram','avança','cresce','crescimento','lucro','lucros',
     'recorde','supera','superam','otimismo','otimista','positivo','positiva','valoriza',
@@ -101,16 +99,12 @@ def _antigravity_sentiment(title, summary=None):
         },
     )
 
-    try:
-        resp = urllib.request.urlopen(req, timeout=20)
-        data = json.loads(resp.read())
-        text_resp = data['choices'][0]['message']['content']
-        result = _parse_result(text_resp)
-        result['model'] = 'antigravity'
-        return result
-    except Exception as e:
-        print(f'  Antigravity error: {e}')
-        return None
+    resp = urllib.request.urlopen(req, timeout=20)
+    data = json.loads(resp.read())
+    text_resp = data['choices'][0]['message']['content']
+    result = _parse_result(text_resp)
+    result['model'] = 'antigravity'
+    return result
 
 
 def analyze_sentiment(title, summary=None):
@@ -118,10 +112,8 @@ def analyze_sentiment(title, summary=None):
     global _last_call, _consecutive_429s
 
     if not GEMINI_API_KEY or _consecutive_429s >= 3:
-        # Fallback to keyword when API exhausted
         return _keyword_sentiment(title, summary)
 
-    # Rate limit
     elapsed = time.time() - _last_call
     if elapsed < _min_interval:
         time.sleep(_min_interval - elapsed)
@@ -153,22 +145,8 @@ def analyze_sentiment(title, summary=None):
     except urllib.error.HTTPError as e:
         if e.code == 429:
             _consecutive_429s += 1
-            if _consecutive_429s >= 3:
-                print(f'  [SENTIMENT] Gemini exhausted after {_consecutive_429s} 429s — trying Antigravity')
-            # Try Antigravity before falling back to keyword
             ag_result = _antigravity_sentiment(title, summary)
             if ag_result:
                 return ag_result
             return _keyword_sentiment(title, summary)
-        body = e.read().decode()[:200]
-        print(f'  Gemini error: {e.code} — {body}')
-        ag_result = _antigravity_sentiment(title, summary)
-        if ag_result:
-            return ag_result
-        return _keyword_sentiment(title, summary)
-    except (json.JSONDecodeError, KeyError, ValueError) as e:
-        print(f'  Gemini parse error: {e}')
-        return _keyword_sentiment(title, summary)
-    except Exception as e:
-        print(f'  Gemini error: {e}')
-        return _keyword_sentiment(title, summary)
+        raise

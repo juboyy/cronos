@@ -14,4 +14,15 @@ export async function supabaseQuery(table: string, params: string = '') {
   return res.json();
 }
 
+/**
+ * Standardize API response for Cronos endpoints.
+ */
+export function cronosResponse(data: unknown, status: number = 200) {
+  const { NextResponse } = require('next/server');
+  if (data instanceof Error) {
+    return NextResponse.json({ error: data.message }, { status: 500 });
+  }
+  return NextResponse.json(data, { status });
+}
+
 export { SUPABASE_URL, SUPABASE_KEY };

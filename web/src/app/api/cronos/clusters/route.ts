@@ -6,7 +6,7 @@ export async function GET() {
     const clusters = await supabaseQuery('cronos_clusters',
       'select=*&order=created_at.desc&limit=20');
     return NextResponse.json(clusters);
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

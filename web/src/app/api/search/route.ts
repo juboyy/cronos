@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const params = `select=*,cronos_sentiment(score,label,confidence)&fts=fts.${encodeURIComponent(tsQuery)}&order=published_at.desc.nullslast&limit=${limit}`;
     const articles = await supabaseQuery('cronos_articles', params);
     return NextResponse.json({ articles, query: q });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

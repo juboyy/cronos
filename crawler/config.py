@@ -1,7 +1,6 @@
 import os
 import json
 
-# Load config from openclaw.json
 _config_path = os.path.join(os.path.expanduser('~'), '.openclaw', 'openclaw.json')
 _cfg = {}
 if os.path.exists(_config_path):
@@ -16,7 +15,6 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY',
 JINA_API_KEY = os.environ.get('JINA_API_KEY',
     _cfg.get('JINA_API_KEY', 'jina_ec949e78573343a791cd0d6303f0bfa5JWZr4a0lzfoQQBiUdP-g-rQG7VOW'))
 
-# Antigravity (Opus) for sentiment — free via subscription
 ANTIGRAVITY_API_KEY = os.environ.get('ANTIGRAVITY_API_KEY',
     _cfg.get('ANTIGRAVITY_API_KEY', ''))
 ANTIGRAVITY_BASE_URL = os.environ.get('ANTIGRAVITY_BASE_URL',

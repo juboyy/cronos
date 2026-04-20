@@ -6,10 +6,11 @@ const BETTAFISH_URL = 'https://bettafish.216-238-124-248.nip.io';
 const STREAMLIT_URL = 'https://streamlit.216-238-124-248.nip.io';
 
 const TABS = [
-  { id: 'main', label: 'Painel Principal', url: BETTAFISH_URL },
-  { id: 'insight', label: 'Insight Engine', url: `${STREAMLIT_URL}` },
-  { id: 'media', label: 'Media Engine', url: `${STREAMLIT_URL.replace('streamlit', 'streamlit')}` },
-  { id: 'query', label: 'Query Engine', url: `${STREAMLIT_URL.replace('streamlit', 'streamlit')}` },
+  { id: 'main', label: 'Painel Principal', url: BETTAFISH_URL, description: 'Interface central para análise multi-agente de sentimentos e tendências.' },
+  { id: 'insight', label: 'Insight Engine', url: `${BETTAFISH_URL}/?engine=insight`, description: 'Extração de insights estratégicos e sinais de mercado a partir de dados não estruturados.' },
+  { id: 'media', label: 'Media Engine', url: `${BETTAFISH_URL}/?engine=media`, description: 'Monitoramento em tempo real de redes sociais, notícias e sentimento da mídia.' },
+  { id: 'query', label: 'Query Engine', url: `${BETTAFISH_URL}/?engine=query`, description: 'Interface de busca semântica profunda para exploração da base de conhecimento.' },
+  { id: 'forum', label: 'Forum', url: `${BETTAFISH_URL}/?engine=forum`, description: 'Análise de discussões em comunidades financeiras e fóruns especializados.' },
 ];
 
 export default function BettaFishPage() {
@@ -20,10 +21,31 @@ export default function BettaFishPage() {
   const iframeUrl = tab.url;
 
   useEffect(() => {
-    fetch(BETTAFISH_URL, { mode: 'no-cors', signal: AbortSignal.timeout(5000) })
-      .then(() => setStatus('online'))
-      .catch(() => setStatus('offline'));
+    const checkStatus = async () => {
+      try {
+        const res = await fetch(BETTAFISH_URL, { signal: AbortSignal.timeout(5000) });
+        if (res.ok || res.status === 401 || res.status === 403) {
+          setStatus('online');
+        } else {
+          setStatus('offline');
+        }
+      } catch (e) {
+        setStatus('offline');
+      }
+    };
+    checkStatus();
   }, []);
+
+  const startEngines = async () => {
+    try {
+      await fetch(`${BETTAFISH_URL}/api/system/start`, { method: 'POST' });
+      alert('Comando de inicialização enviado.');
+      setStatus('loading');
+      setTimeout(() => window.location.reload(), 2000);
+    } catch (e) {
+      alert('Falha ao enviar comando de inicialização.');
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
@@ -106,7 +128,7 @@ export default function BettaFishPage() {
         </div>
       </div>
 
-      {/* Engine iframe */}
+      {/* Engine View */}
       {status === 'offline' ? (
         <div
           style={{
@@ -115,39 +137,74 @@ export default function BettaFishPage() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '16px',
+            gap: '24px',
             color: 'var(--text-muted)',
+            padding: '40px',
+            textAlign: 'center'
           }}
         >
           <span style={{ fontSize: '3rem' }}>🐟</span>
-          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
-            BettaFish engine está offline
-          </p>
-          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)' }}>
-            Engine URL: {BETTAFISH_URL}
-          </p>
-          <button
-            onClick={() => {
-              setStatus('loading');
-              fetch(BETTAFISH_URL, { mode: 'no-cors', signal: AbortSignal.timeout(5000) })
-                .then(() => setStatus('online'))
-                .catch(() => setStatus('offline'));
-            }}
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.625rem',
-              padding: '8px 16px',
-              borderRadius: 'var(--radius)',
-              border: '1px solid var(--border-subtle)',
-              background: 'var(--bg-card)',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-            }}
-          >
-            Retry Connection
-          </button>
+          <div>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.875rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
+              BettaFish Engine is Offline
+            </p>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-tertiary)' }}>
+              Last Check: {new Date().toLocaleTimeString()} • URL: {BETTAFISH_URL}
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', width: '100%', maxWidth: '800px' }}>
+             {TABS.map(t => (
+               <div key={t.id} style={{ padding: '16px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border-subtle)', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-primary)', textTransform: 'uppercase' }}>{t.label}</span>
+                    <span style={{ fontSize: '0.5rem', color: '#ef4444' }}>● DOWN</span>
+                  </div>
+                  <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>{t.description}</p>
+               </div>
+             ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => {
+                setStatus('loading');
+                window.location.reload();
+              }}
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.625rem',
+                padding: '10px 20px',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--border-subtle)',
+                background: 'var(--bg-card)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                textTransform: 'uppercase'
+              }}
+            >
+              Retry Connection
+            </button>
+            <button
+              onClick={startEngines}
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.625rem',
+                padding: '10px 20px',
+                borderRadius: 'var(--radius)',
+                border: 'none',
+                background: 'var(--accent)',
+                color: '#000',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                textTransform: 'uppercase'
+              }}
+            >
+              Start Engines
+            </button>
+          </div>
         </div>
-      ) : (
+      ) : activeTab === 'main' ? (
         <iframe
           key={activeTab}
           src={iframeUrl}
@@ -160,7 +217,34 @@ export default function BettaFishPage() {
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           title={`BettaFish — ${tab.label}`}
         />
+      ) : (
+        <div style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '24px' }}>
+            <div style={{ maxWidth: '600px', textAlign: 'center' }}>
+                <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.5rem', marginBottom: '12px' }}>{tab.label}</h2>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>{tab.description}</p>
+                <div style={{ padding: '20px', background: 'var(--bg-card)', borderRadius: 'var(--radius)', border: '1px solid var(--border-subtle)', display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '0.625rem', color: '#22c55e', fontFamily: 'var(--font-mono)' }}>STATUS: OPERATIONAL</span>
+                    <div style={{ height: '12px', width: '1px', background: 'var(--border-subtle)' }} />
+                    <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>VERSION: 2.4.0-BETA</span>
+                </div>
+            </div>
+            
+            <iframe
+                key={activeTab}
+                src={iframeUrl}
+                style={{
+                    width: '100%',
+                    height: '500px',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius)',
+                    background: '#0a0a0a',
+                }}
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                title={`BettaFish — ${tab.label}`}
+            />
+        </div>
       )}
     </div>
   );
+}
 }

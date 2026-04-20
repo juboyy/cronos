@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseQuery } from '@/lib/supabase';
+import { NextRequest } from 'next/server';
+import { supabaseQuery, cronosResponse } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -12,8 +12,8 @@ export async function GET(req: NextRequest) {
       query = `article_id=eq.${article_id}&` + query;
     }
     const sentiment = await supabaseQuery('cronos_sentiment', query);
-    return NextResponse.json(sentiment);
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return cronosResponse(sentiment);
+  } catch (e: unknown) {
+    return cronosResponse(e);
   }
 }

@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     }
 
     return response;
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

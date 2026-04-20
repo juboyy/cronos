@@ -33,11 +33,8 @@ def _insert(table, data):
     req = urllib.request.Request(
         f'{SUPABASE_URL}/rest/v1/{table}', data=body,
         headers=_headers({'Prefer': 'return=minimal'}))
-    try:
-        urllib.request.urlopen(req, timeout=10)
-        return True
-    except urllib.error.HTTPError:
-        return False
+    urllib.request.urlopen(req, timeout=10)
+    return True
 
 
 def _update(table, id, data):
@@ -46,11 +43,8 @@ def _update(table, id, data):
         f'{SUPABASE_URL}/rest/v1/{table}?id=eq.{id}',
         data=body, method='PATCH',
         headers=_headers({'Prefer': 'return=minimal'}))
-    try:
-        urllib.request.urlopen(req, timeout=10)
-        return True
-    except:
-        return False
+    urllib.request.urlopen(req, timeout=10)
+    return True
 
 
 def check_sentiment_condition(conditions):

@@ -42,7 +42,6 @@ Return JSON array. Brazilian market perspective. Portuguese language for reasoni
     
     result = generate_json(prompt, temperature=0.8, model=model)
     if not result['ok']:
-        # Fallback: generate basic profiles
         profiles = []
         for i, arch in enumerate(active_archetypes):
             profiles.append({
@@ -193,8 +192,6 @@ def run_simulation(
     scenario: str,
     context: str = '',
     tickers: List[str] = None,
-    agent_count: int = None,
-    max_rounds: int = None,
     market_data: str = '',
     progress_callback=None,
     preset: str = 'standard',
@@ -206,15 +203,9 @@ def run_simulation(
         preset: 'quick', 'standard', or 'deep'
         config: Override individual settings (merged on top of preset)
     """
-    # Resolve preset + overrides
     p = get_preset(preset)
     if config:
         p.update({k: v for k, v in config.items() if v is not None})
-    # Legacy param overrides
-    if agent_count is not None:
-        p['agent_count'] = agent_count
-    if max_rounds is not None:
-        p['max_rounds'] = max_rounds
     
     active_model = resolve_model(p.get('model', 'flash'))
     active_agent_count = min(p.get('agent_count', DEFAULT_AGENT_COUNT), 30)
@@ -248,7 +239,6 @@ def run_simulation(
         'report': None,
     }
     
-    # Phase 1: Generate agents
     if progress_callback:
         progress_callback('generating_agents', 0, active_max_rounds)
     
@@ -258,7 +248,6 @@ def run_simulation(
     )
     result['agents'] = agents
     
-    # Phase 2: Run debate rounds
     all_actions = []
     for round_num in range(1, active_max_rounds + 1):
         if progress_callback:
@@ -272,7 +261,6 @@ def run_simulation(
         )
         result['rounds'].append(round_result)
         
-        # Update agent positions based on round results
         interactions = round_result.get('interactions', [])
         for interaction in interactions:
             agent_id = interaction.get('agent_id')
@@ -286,15 +274,13 @@ def run_simulation(
         
         all_actions.extend(interactions)
         
-        # Early convergence check
         if active_early_exit and round_num >= active_min_rounds:
             consensus = round_result.get('consensus_strength', 0)
             if consensus > active_convergence:
                 break
         
-        time.sleep(0.3)  # Rate limiting
+        time.sleep(0.3)
     
-    # Phase 3: Generate report
     if progress_callback:
         progress_callback('generating_report', active_max_rounds, active_max_rounds)
     

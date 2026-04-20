@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
       `select=*&limit=${limit}`
     );
     return NextResponse.json(entities);
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

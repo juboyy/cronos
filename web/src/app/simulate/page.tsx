@@ -1,8 +1,9 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 
-interface Simulation { id: string; scenario: string; tickers: string[]; status: string; result: any; created_at: string; }
-interface MarketContext { macro: Record<string, any>; topMovers: { ticker: string; delta: number }[]; sentiment: { avg: number; posPct: number; negPct: number }; recentNews: string[]; }
+import { Simulation, Macro, Impact, Sentiment, Prediction, ScenarioCase } from '@/lib/types';
+
+interface MarketContext { macro: Record<string, Macro>; topMovers: { ticker: string; delta: number }[]; sentiment: { avg: number; posPct: number; negPct: number }; recentNews: string[]; }
 
 const SCENARIO_PRESETS = [
   { label: 'Selic +0.5%', scenario: 'O Copom decide elevar a Selic em 50 bps para conter inflação persistente', tickers: 'ITUB4, BBDC4, BBAS3, B3SA3' },
@@ -25,7 +26,7 @@ export default function SimulatePage() {
     fetch('/api/cronos/simulate').then(r => r.json()).then((sims) => {
       if (Array.isArray(sims)) {
         setSimulations(sims);
-        const completed = sims.find((s: any) => s.status === 'completed' && s.result);
+        const completed = sims.find((s: Simulation) => s.status === 'completed' && s.result);
         if (completed) setActive(completed);
       }
     }).catch(() => {});
@@ -35,14 +36,14 @@ export default function SimulatePage() {
       fetch('/api/cronos/macro').then(r => r.json()).catch(() => []),
       fetch('/api/cronos/impact').then(r => r.json()).catch(() => []),
       fetch('/api/cronos/sentiment').then(r => r.json()).catch(() => []),
-    ]).then(([macro, impacts, sentiments]) => {
-      const macroMap: Record<string, any> = {};
+    ]).then(([macro, impacts, sentiments]: [Macro[], Impact[], Sentiment[]]) => {
+      const macroMap: Record<string, Macro> = {};
       if (Array.isArray(macro)) for (const m of macro) { if (!macroMap[m.indicator]) macroMap[m.indicator] = m; }
 
-      const scores = Array.isArray(sentiments) ? sentiments.map((s: any) => s.score).filter(Boolean) : [];
+      const scores = Array.isArray(sentiments) ? sentiments.map((s: Sentiment) => s.score).filter(Boolean) : [];
       const avg = scores.length > 0 ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length : 0;
 
-      const topMovers = Array.isArray(impacts) ? impacts.slice(0, 5).map((i: any) => ({ ticker: i.ticker, delta: i.delta_1d || 0 })) : [];
+      const topMovers = Array.isArray(impacts) ? impacts.slice(0, 5).map((i: Impact) => ({ ticker: i.ticker, delta: i.delta_1d || 0 })) : [];
 
       setMarket({
         macro: macroMap,
@@ -102,7 +103,7 @@ export default function SimulatePage() {
       {/* ── MARKET CONTEXT ── */}
       {market && (
         <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
-          {Object.entries(market.macro).slice(0, 4).map(([key, m]) => (
+          {Object.entries(market.macro).slice(0, 4).map(([key, m]: [string, Macro]) => (
             <div key={key} style={{ flex: '1 1 100px', padding: '8px 12px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
               <div style={{ ...S.label, marginBottom: '2px' }}>{key}</div>
               <div style={{ ...S.mono, fontSize: '0.875rem', color: 'var(--text-primary)' }}>{typeof m.value === 'number' ? m.value.toFixed(2) : m.value}</div>
@@ -230,7 +231,7 @@ export default function SimulatePage() {
                 <section>
                   <div style={{ ...S.label, marginBottom: '14px' }}>Predictions</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    {r.predictions.map((p: any, i: number) => (
+                    {r.predictions.map((p: Prediction, i: number) => (
                       <div
                         key={i}
                         className="stagger"
@@ -279,7 +280,7 @@ export default function SimulatePage() {
                 <section>
                   <div style={{ ...S.label, marginBottom: '14px' }}>Scenario Analysis</div>
                   <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(r.scenarios.length, 3)}, 1fr)`, gap: '2px' }}>
-                    {r.scenarios.map((sc: any, i: number) => (
+                    {r.scenarios.map((sc: ScenarioCase, i: number) => (
                       <div
                         key={i}
                         className="stagger"

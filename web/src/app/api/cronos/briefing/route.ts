@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseQuery } from '@/lib/supabase';
+import { NextRequest } from 'next/server';
+import { supabaseQuery, cronosResponse } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,8 +11,8 @@ export async function GET(req: NextRequest) {
       : 'select=*&order=date.desc&limit=7';
 
     const briefings = await supabaseQuery('cronos_briefings', params);
-    return NextResponse.json(briefings);
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return cronosResponse(briefings);
+  } catch (e: unknown) {
+    return cronosResponse(e);
   }
 }

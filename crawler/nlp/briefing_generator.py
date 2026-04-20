@@ -40,12 +40,8 @@ def upsert(table, data):
                  'Prefer': 'resolution=merge-duplicates,return=minimal'},
         method='POST',
     )
-    try:
-        urllib.request.urlopen(req, timeout=15)
-        return True
-    except urllib.error.HTTPError as e:
-        print(f'  Upsert error: {e.code} — {e.read().decode()[:200]}')
-        return False
+    urllib.request.urlopen(req, timeout=15)
+    return True
 
 
 def _generate_summary(data):

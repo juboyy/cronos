@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseQuery, SUPABASE_URL, SUPABASE_KEY } from '@/lib/supabase';
+import { Entity } from '@/lib/types';
 
 export async function GET(
   req: NextRequest,
@@ -8,9 +9,6 @@ export async function GET(
   const { id } = await params;
 
   try {
-    // ═══════════════════════════════════════════════
-    // Phase 1: Core data (article + direct relations)
-    // ═══════════════════════════════════════════════
     const [articles, articleEntities, sentiments, impacts] = await Promise.all([
       supabaseQuery('cronos_articles', `id=eq.${id}&limit=1`),
       supabaseQuery(
@@ -27,19 +25,16 @@ export async function GET(
 
     const article = articles[0];
     const entities = articleEntities
-      .map((ae: any) => ({
+      .map((ae: unknown) => ({
         ...ae.cronos_entities,
         relevance: ae.relevance,
         context: ae.context,
       }))
-      .filter((e: any) => e.id);
+      .filter((e: unknown) => e.id);
 
-    const entityIds = entities.map((e: any) => e.id);
-    const tickers = entities.filter((e: any) => e.type === 'ticker').map((e: any) => e.value);
+    const entityIds = entities.map((e: unknown) => e.id);
+    const tickers = entities.filter((e: unknown) => e.type === 'ticker').map((e: unknown) => e.value);
 
-    // ═══════════════════════════════════════════════
-    // Phase 2: Cross-source intelligence (ontology)
-    // ═══════════════════════════════════════════════
     const [
       prices,
       relatedLinks,
@@ -66,7 +61,7 @@ export async function GET(
       entityIds.length > 0
         ? supabaseQuery(
             'cronos_correlations',
-            `select=*&or=(entity=in.(${entities.map((e: any) => encodeURIComponent(e.canonical_name || e.value)).join(',')}))&order=signal_strength.desc&limit=20`
+            `select=*&or=(entity=in.(${entities.map((e: unknown) => encodeURIComponent(e.canonical_name || e.value)).join(',')}))&order=signal_strength.desc&limit=20`
           ).catch(() => [])
         : Promise.resolve([]),
 
@@ -77,12 +72,7 @@ export async function GET(
       ).catch(() => []),
     ]);
 
-    // ═══════════════════════════════════════════════
-    // Phase 3: Build rich ontology graph
-    // ═══════════════════════════════════════════════
-
-    // Deduplicate related articles and track shared entity count
-    const relatedMap = new Map<string, { article: any; sharedEntities: string[]; totalRelevance: number }>();
+    const relatedMap = new Map<string, { article: unknown; sharedEntities: string[]; totalRelevance: number }>();
     for (const link of relatedLinks) {
       if (!link.cronos_articles) continue;
       const rid = link.cronos_articles.id;
@@ -108,12 +98,11 @@ export async function GET(
         connectionStrength: r.totalRelevance,
       }));
 
-    // ── Ontology Graph Nodes ──
-    const graphNodes: any[] = [];
-    const graphEdges: any[] = [];
+    const graphNodes: unknown[] = [];
+    const graphEdges: unknown[] = [];
     const nodeSet = new Set<string>();
 
-    const addNode = (id: string, type: string, label: string, group: string, meta?: any) => {
+    const addNode = (id: string, type: string, label: string, group: string, meta?: unknown) => {
       if (nodeSet.has(id)) return;
       nodeSet.add(id);
       graphNodes.push({ id, type, label, group, ...meta });
@@ -166,7 +155,7 @@ export async function GET(
 
       // Connect related article to shared entities
       const relEntityLinks = relatedLinks.filter(
-        (l: any) => l.cronos_articles?.id === rel.id
+        (l: unknown) => l.cronos_articles?.id === rel.id
       );
       for (const link of relEntityLinks) {
         const entityNodeId = `entity:${link.entity_id}`;
@@ -185,7 +174,7 @@ export async function GET(
     // Correlations as edges between entities
     for (const corr of correlations) {
       const entityNode = graphNodes.find(
-        (n: any) =>
+        (n: unknown) =>
           (n.type !== 'article' && n.type !== 'sector') &&
           (n.label === corr.entity || n.label?.includes(corr.entity))
       );
@@ -217,7 +206,7 @@ export async function GET(
 
       // Connect impact to its ticker entity (if exists)
       const tickerEntity = graphNodes.find(
-        (n: any) => n.type === 'ticker' && n.label === imp.ticker
+        (n: unknown) => n.type === 'ticker' && n.label === imp.ticker
       );
       if (tickerEntity) {
         graphEdges.push({
@@ -239,10 +228,7 @@ export async function GET(
       }
     }
 
-    // ═══════════════════════════════════════════════
-    // Phase 4: Transmission chain with causal flow
-    // ═══════════════════════════════════════════════
-    const transmissionChain = impacts.map((imp: any) => ({
+    const transmissionChain = impacts.map((imp: unknown) => ({
       ticker: imp.ticker,
       sentiment: sentiments[0]?.score ?? null,
       delta_1d: imp.delta_1d,
@@ -251,8 +237,8 @@ export async function GET(
     }));
 
     // Temporal context — filter clusters that mention our entities
-    const entityNames = entities.map((e: any) => (e.canonical_name || e.value || '').toLowerCase());
-    const relevantClusters = clusters.filter((c: any) => {
+    const entityNames = entities.map((e: unknown) => (e.canonical_name || e.value || '').toLowerCase());
+    const relevantClusters = clusters.filter((c: unknown) => {
       const keywords = (c.keywords || []).map((k: string) => k.toLowerCase());
       return entityNames.some((name: string) => keywords.some((k: string) => name.includes(k) || k.includes(name)));
     }).slice(0, 5);
@@ -276,7 +262,7 @@ export async function GET(
         graphEdgeCount: graphEdges.length,
       },
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

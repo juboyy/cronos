@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(impRes.ok ? await impRes.json() : []);
   }
 
-  const results: any = { query: q, mode, articles: [], entities: [], related: [] };
+  const results: unknown = { query: q, mode, articles: [], entities: [], related: [] };
 
   // 1. Full-text search on articles
   if (mode === 'fts' || mode === 'hybrid') {
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
       if (relatedRes.ok) {
         const linked = await relatedRes.json();
         results.related = linked
-          .map((l: any) => l.cronos_articles)
+          .map((l: unknown) => l.cronos_articles)
           .filter(Boolean);
       }
 
@@ -103,7 +103,7 @@ export async function GET(req: NextRequest) {
 
   // Merge and deduplicate articles
   if (mode === 'hybrid' && results.related.length > 0) {
-    const existingIds = new Set(results.articles.map((a: any) => a.id));
+    const existingIds = new Set(results.articles.map((a: unknown) => a.id));
     for (const r of results.related) {
       if (!existingIds.has(r.id)) {
         results.articles.push(r);

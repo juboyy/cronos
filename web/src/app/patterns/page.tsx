@@ -1,11 +1,11 @@
-import { supabaseQuery } from '@/lib/supabase';
+import { Pattern } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 async function getData() {
-  const patterns = await supabaseQuery('cronos_patterns', 'select=*&order=occurrences.desc&limit=50');
+  const patterns = await supabaseQuery('cronos_patterns', 'select=*&order=occurrences.desc&limit=50') as Pattern[];
 
-  const grouped: Record<string, any[]> = {};
+  const grouped: Record<string, Pattern[]> = {};
   for (const p of patterns) {
     if (!grouped[p.ticker]) grouped[p.ticker] = [];
     grouped[p.ticker].push(p);
@@ -53,7 +53,7 @@ export default async function PatternsPage() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            {pats.map((p: any) => {
+            {pats.map((p) => {
               const accentColor = TYPE_ACCENTS[p.pattern_type] || TYPE_ACCENTS.general;
               return (
                 <div
@@ -82,7 +82,7 @@ export default async function PatternsPage() {
                     <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '6px' }}>
                       {p.description}
                     </div>
-                    {p.sample_articles?.slice(0, 2).map((sa: any, i: number) => (
+                    {p.sample_articles?.slice(0, 2).map((sa, i: number) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px' }}>
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.625rem' }}>→</span>
                         <span style={{ fontSize: '0.6875rem', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -108,7 +108,7 @@ export default async function PatternsPage() {
                       {p.avg_impact > 0 ? '+' : ''}{p.avg_impact?.toFixed(2)}%
                     </div>
                     <div style={{ ...S.mono, fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      σ {p.std_dev?.toFixed(2)}%
+                      σ {p.std_dev != null ? p.std_dev.toFixed(2) + '%' : '—'}
                     </div>
                     <div style={{ ...S.mono, fontSize: '0.625rem', color: 'var(--text-muted)' }}>
                       conf {(p.avg_confidence * 100)?.toFixed(0)}%

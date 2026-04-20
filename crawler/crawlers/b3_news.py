@@ -9,16 +9,13 @@ class B3Crawler(BaseCrawler):
     name = 'b3'
     url = 'https://www.b3.com.br/pt_br/noticias/'
 
-    # Multiple entry points to bypass 403
     _RSS_URLS = [
         'https://www.b3.com.br/data/files/noticias/noticias.json',
         'https://www.b3.com.br/lumis/portal/file/fileDownload.jsp?fileId=8AA8D09775E4CF6B0175E5CD1B8E0A6A',
     ]
     
-    # B3 news via Google News RSS (indirect, bypasses 403)
     _GOOGLE_NEWS_URL = 'https://news.google.com/rss/search?q=site:b3.com.br+noticias&hl=pt-BR&gl=BR&ceid=BR:pt-419'
     
-    # B3 investor relations RSS
     _IR_URLS = [
         'https://ri.b3.com.br/feed/',
         'https://api.b3.com.br/news/v1/articles?language=pt&limit=20',
@@ -27,7 +24,6 @@ class B3Crawler(BaseCrawler):
     def fetch(self):
         articles = []
 
-        # Strategy 1: Direct JSON API
         for api_url in self._RSS_URLS:
             raw = self._fetch_url(api_url)
             if raw:
@@ -36,7 +32,6 @@ class B3Crawler(BaseCrawler):
                     articles.extend(parsed)
                     break
 
-        # Strategy 2: Google News for B3 content
         if not articles:
             raw = self._fetch_url(self._GOOGLE_NEWS_URL)
             if raw:
@@ -44,7 +39,6 @@ class B3Crawler(BaseCrawler):
                 if parsed:
                     articles.extend(parsed)
 
-        # Strategy 3: IR feed
         if not articles:
             for ir_url in self._IR_URLS:
                 raw = self._fetch_url(ir_url)
@@ -54,7 +48,6 @@ class B3Crawler(BaseCrawler):
                         articles.extend(parsed)
                         break
 
-        # Strategy 4: Jina Reader (renders JS, bypasses blocks)
         if not articles:
             raw = self._fetch_via_jina(self.url)
             if raw:
@@ -106,9 +99,7 @@ class B3Crawler(BaseCrawler):
                 pub = pub_el.text.strip() if pub_el is not None and pub_el.text else None
                 desc = desc_el.text.strip() if desc_el is not None and desc_el.text else ''
 
-                # Clean Google News title suffix " - B3"
                 title = re.sub(r'\s*-\s*B3\s*$', '', title)
-                # Strip HTML from description
                 desc = re.sub(r'<[^>]+>', '', desc)
 
                 if title and link:
@@ -145,7 +136,6 @@ class B3Crawler(BaseCrawler):
     def _parse_jina_text(self, text):
         """Parse Jina Reader markdown output for news items."""
         articles = []
-        # Jina returns markdown. Look for links with news titles
         for match in re.finditer(r'\[([^\]]{15,})\]\((https?://[^\)]+b3[^\)]+)\)', text):
             title = match.group(1).strip()
             url = match.group(2)
@@ -159,7 +149,6 @@ class B3Crawler(BaseCrawler):
                     'published_at': None,
                 })
 
-        # Also try line-by-line for non-link titles
         if not articles:
             lines = [l.strip() for l in text.split('\n') if l.strip() and len(l.strip()) > 20]
             for line in lines[:15]:

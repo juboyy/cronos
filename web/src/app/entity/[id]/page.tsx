@@ -1,21 +1,22 @@
 import { supabaseQuery } from '@/lib/supabase';
+import { Article, Entity, Sentiment, Impact, Price, ArticleEntity } from '@/lib/types';
 import EntityCharts from '@/components/EntityCharts';
 import { TransmissionChain } from '@/components/TransmissionChain';
 import { SentimentHeatmap } from '@/components/SentimentHeatmap';
 
 export const dynamic = 'force-dynamic';
 
-async function getEntity(id: string) {
-  const entities = await supabaseQuery('cronos_entities', `id=eq.${id}&limit=1`);
+async function getEntity(id: string): Promise<Entity | null> {
+  const entities = await supabaseQuery('cronos_entities', `id=eq.${id}&limit=1`) as Entity[];
   return entities[0] || null;
 }
 
-async function getLinkedArticles(entityId: string, entityValue: string, entityType: string) {
+async function getLinkedArticles(entityId: string, entityValue: string, entityType: string): Promise<ArticleEntity[]> {
   // First try direct entity link
   let articles = await supabaseQuery(
     'cronos_article_entities',
     `entity_id=eq.${entityId}&select=relevance,context,cronos_articles(id,title,source,url,summary,published_at,cronos_sentiment(score,label))&order=cronos_articles(published_at).desc&limit=30`
-  );
+  ) as ArticleEntity[];
   
   // If no results and this is a ticker, also search for the company entity
   if (articles.length === 0 && entityType === 'ticker') {
@@ -23,14 +24,14 @@ async function getLinkedArticles(entityId: string, entityValue: string, entityTy
     const relatedEntities = await supabaseQuery(
       'cronos_entities',
       `type=eq.company&canonical_name=not.is.null&select=id,canonical_name`
-    );
+    ) as Entity[];
     
     // Search for entity links from ALL related entities
     for (const rel of relatedEntities) {
       const relArticles = await supabaseQuery(
         'cronos_article_entities',
         `entity_id=eq.${rel.id}&select=relevance,context,cronos_articles(id,title,source,url,summary,published_at,cronos_sentiment(score,label))&order=cronos_articles(published_at).desc&limit=30`
-      );
+      ) as ArticleEntity[];
       if (relArticles.length > 0 && 
           rel.canonical_name?.toLowerCase().includes(entityValue?.toLowerCase()?.replace(/\d+/g, ''))) {
         articles = relArticles;
@@ -43,20 +44,20 @@ async function getLinkedArticles(entityId: string, entityValue: string, entityTy
       const fallback = await supabaseQuery(
         'cronos_articles',
         `title=ilike.*${entityValue}*&select=id,title,source,url,summary,published_at,cronos_sentiment(score,label)&order=published_at.desc&limit=30`
-      );
-      articles = fallback.map((a: any) => ({ relevance: 0.5, context: 'title mention', cronos_articles: a }));
+      ) as Article[];
+      articles = fallback.map((a) => ({ relevance: 0.5, context: 'title mention', cronos_articles: a, article_id: a.id, entity_id: entityId }));
     }
   }
   
   return articles;
 }
 
-async function getPrices(ticker: string) {
-  return supabaseQuery('cronos_prices', `ticker=eq.${ticker}&select=date,close,volume&order=date.desc&limit=365`);
+async function getPrices(ticker: string): Promise<Price[]> {
+  return supabaseQuery('cronos_prices', `ticker=eq.${ticker}&select=date,close,volume&order=date.desc&limit=365`) as Promise<Price[]>;
 }
 
-async function getImpacts(ticker: string) {
-  return supabaseQuery('cronos_impacts', `ticker=eq.${ticker}&select=*,cronos_articles(title,source,published_at)&order=impact_score.desc&limit=20`);
+async function getImpacts(ticker: string): Promise<Impact[]> {
+  return supabaseQuery('cronos_impacts', `ticker=eq.${ticker}&select=*,cronos_articles(title,source,published_at)&order=impact_score.desc&limit=20`) as Promise<Impact[]>;
 }
 
 function SentimentDot({ score }: { score: number }) {
@@ -80,7 +81,7 @@ function Sparkline({ data, width = 200, height = 48 }: { data: { date: string; c
   const delta = ((closes[closes.length - 1] - closes[0]) / closes[0]) * 100;
   const color = delta >= 0 ? 'var(--signal-up)' : 'var(--signal-down)';
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible' }}>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible' }} aria-hidden="true">
       <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -117,10 +118,10 @@ export default async function EntityPage({ params }: { params: Promise<{ id: str
   ]);
 
   const articles = links
-    .map((l: any) => ({ ...l.cronos_articles, relevance: l.relevance, context: l.context }))
-    .filter((a: any) => a?.title);
+    .map((l) => ({ ...l.cronos_articles, relevance: l.relevance, context: l.context } as Article & { relevance: number; context: string | null }))
+    .filter((a) => a?.title);
 
-  const sentiments = articles.map((a: any) => a.cronos_sentiment?.[0]?.score).filter((s: any) => s != null);
+  const sentiments = articles.map((a) => a.cronos_sentiment?.[0]?.score).filter((s): s is number => s != null);
   const avgSentiment = sentiments.length > 0 ? sentiments.reduce((a: number, b: number) => a + b, 0) / sentiments.length : 0;
 
   const typeColors: Record<string, string> = {
@@ -200,10 +201,10 @@ export default async function EntityPage({ params }: { params: Promise<{ id: str
         <section className="stagger">
           <EntityCharts ticker={entity.value} prices={prices} events={
             articles
-              .filter((a: any) => a.cronos_sentiment?.[0]?.score != null)
-              .map((a: any) => ({
+              .filter((a) => a.cronos_sentiment?.[0]?.score != null)
+              .map((a) => ({
                 time: a.published_at || '',
-                score: a.cronos_sentiment[0].score,
+                score: a.cronos_sentiment![0].score,
                 title: a.title || '',
               }))
           } />
@@ -216,7 +217,7 @@ export default async function EntityPage({ params }: { params: Promise<{ id: str
       {entity.type === 'ticker' && (
         <section className="stagger" style={{ padding: '24px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)' }}>
           <TransmissionChain events={
-            impacts.map((imp: any) => ({
+            impacts.map((imp) => ({
               title: imp.cronos_articles?.title || 'Artigo sem título',
               source: imp.cronos_articles?.source || 'desconhecido',
               date: imp.cronos_articles?.published_at || '',
@@ -231,7 +232,7 @@ export default async function EntityPage({ params }: { params: Promise<{ id: str
       {/* ━━ SENTIMENT HEATMAP ━━ */}
       <section className="stagger" style={{ padding: '24px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)' }}>
         <SentimentHeatmap articles={
-          articles.map((a: any) => ({
+          articles.map((a) => ({
             published_at: a.published_at || '',
             sentiment: a.cronos_sentiment?.[0]?.score ?? undefined,
           }))
@@ -248,7 +249,7 @@ export default async function EntityPage({ params }: { params: Promise<{ id: str
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            {articles.map((a: any) => {
+            {articles.map((a) => {
               const score = a.cronos_sentiment?.[0]?.score ?? 0;
               return (
                 <a
@@ -300,7 +301,7 @@ export default async function EntityPage({ params }: { params: Promise<{ id: str
                 Histórico de Impacto
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {impacts.slice(0, 8).map((imp: any, i: number) => (
+                {impacts.slice(0, 8).map((imp, i: number) => (
                   <div key={i} style={{ padding: '8px 10px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>

@@ -26,13 +26,13 @@ from bettafish_engine import analyze_article, deep_opinion_analysis
 app = Flask(__name__)
 CORS(app)
 
-# In-memory store for simulation results (persisted to disk)
 SIMULATIONS = {}
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
 
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-def _save_simulation(sim_id: str, data: dict):
+def _save_simulation(sim_id: str, data: Dict[str, Any]):
     """Persist simulation to disk."""
     path = os.path.join(DATA_DIR, f'{sim_id}.json')
     with open(path, 'w') as f:
@@ -105,11 +105,6 @@ def simulate():
     config = data.get('config', {})
     market_data = data.get('market_data', '')
     
-    # Legacy compat: if agents/rounds passed at top level
-    agent_count = data.get('agent_count')
-    max_rounds = data.get('max_rounds')
-    
-    # Create placeholder
     sim_id = f'sim_{uuid.uuid4().hex[:12]}'
     placeholder = {
         'simulation_id': sim_id,
@@ -123,7 +118,6 @@ def simulate():
     SIMULATIONS[sim_id] = placeholder
     _save_simulation(sim_id, placeholder)
     
-    # Run in background thread
     def _run():
         def progress_cb(phase, current, total):
             SIMULATIONS[sim_id]['progress'] = {
@@ -136,8 +130,6 @@ def simulate():
                 scenario=scenario,
                 context=context,
                 tickers=tickers,
-                agent_count=agent_count,
-                max_rounds=max_rounds,
                 market_data=market_data,
                 progress_callback=progress_cb,
                 preset=preset,
@@ -166,7 +158,6 @@ def get_simulation(sim_id):
     """Get simulation status and results."""
     sim = SIMULATIONS.get(sim_id)
     if not sim:
-        # Try loading from disk
         path = os.path.join(DATA_DIR, f'{sim_id}.json')
         if os.path.exists(path):
             with open(path) as f:

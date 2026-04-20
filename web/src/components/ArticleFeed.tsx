@@ -3,16 +3,9 @@
 import { useState } from 'react';
 import { ArticleAnalysis } from './ArticleAnalysis';
 import { ArticleModal } from './ArticleModal';
+import { Article } from '@/lib/types';
 
-interface FeedArticle {
-  id: string;
-  title: string;
-  source: string;
-  summary?: string;
-  published_at?: string;
-  url: string;
-  cronos_sentiment?: { score: number; label: string }[];
-}
+interface FeedArticle extends Article {}
 
 function formatTime(iso: string | null) {
   if (!iso) return '';

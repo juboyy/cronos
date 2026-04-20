@@ -1,5 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseQuery } from '@/lib/supabase';
+import { Article, Entity, ArticleEntity, Sentiment, Impact, Price } from '@/lib/types';
 
 export async function GET(
   req: NextRequest,
@@ -8,25 +7,22 @@ export async function GET(
   const { id } = await params;
 
   try {
-    // Get entity
-    const entities = await supabaseQuery('cronos_entities', `id=eq.${id}&limit=1`);
+    const entities = await supabaseQuery('cronos_entities', `id=eq.${id}&limit=1`) as Entity[];
     if (!entities.length) {
       return NextResponse.json({ error: 'Entity not found' }, { status: 404 });
     }
     const entity = entities[0];
 
-    // Get linked articles — multi-strategy
     let links = await supabaseQuery(
       'cronos_article_entities',
       `entity_id=eq.${id}&select=article_id,relevance,context,cronos_articles(id,title,source,url,summary,published_at)&order=cronos_articles(published_at).desc&limit=30`
-    );
+    ) as ArticleEntity[];
 
-    // Strategy 2: If ticker, find company entity with same canonical_name
     if (links.length === 0 && entity.type === 'ticker') {
       const relatedEntities = await supabaseQuery(
         'cronos_entities',
         `type=eq.company&canonical_name=not.is.null&select=id,canonical_name`
-      );
+      ) as Entity[];
 
       const stripped = entity.value?.replace(/\d+/g, '').toLowerCase();
       for (const rel of relatedEntities) {
@@ -34,7 +30,7 @@ export async function GET(
           const relLinks = await supabaseQuery(
             'cronos_article_entities',
             `entity_id=eq.${rel.id}&select=article_id,relevance,context,cronos_articles(id,title,source,url,summary,published_at)&order=cronos_articles(published_at).desc&limit=30`
-          );
+          ) as ArticleEntity[];
           if (relLinks.length > 0) {
             links = relLinks;
             break;
@@ -43,65 +39,61 @@ export async function GET(
       }
     }
 
-    // Strategy 3: fallback to title mention
     if (links.length === 0 && entity.type === 'ticker') {
       const fallbackArticles = await supabaseQuery(
         'cronos_articles',
         `title=ilike.*${entity.value}*&select=id,title,source,url,summary,published_at&order=published_at.desc&limit=30`
-      );
-      links = fallbackArticles.map((a: any) => ({
+      ) as Article[];
+      links = fallbackArticles.map((a) => ({
         article_id: a.id,
         relevance: 0.5,
         context: 'title mention',
         cronos_articles: a,
+        entity_id: id,
       }));
     }
 
-    // Get sentiments for linked articles
     const articleIds = links
-      .map((l: any) => l.article_id || l.cronos_articles?.id)
-      .filter(Boolean);
-    let sentiments: any[] = [];
-    let avgSentiment = null;
+      .map((l) => l.article_id || l.cronos_articles?.id)
+      .filter(Boolean) as string[];
+    let sentiments: Sentiment[] = [];
+    let avgSentiment: number | null = null;
 
     if (articleIds.length > 0) {
       sentiments = await supabaseQuery(
         'cronos_sentiment',
         `article_id=in.(${articleIds.join(',')})&select=article_id,score,label`
-      );
+      ) as Sentiment[];
       if (sentiments.length > 0) {
-        const sum = sentiments.reduce((a: number, s: any) => a + (s.score || 0), 0);
+        const sum = sentiments.reduce((a: number, s) => a + (s.score || 0), 0);
         avgSentiment = sum / sentiments.length;
       }
     }
 
-    // Get impacts if ticker
-    let impacts: any[] = [];
+    let impacts: Impact[] = [];
     if (entity.type === 'ticker') {
       impacts = await supabaseQuery(
         'cronos_impacts',
         `ticker=eq.${entity.value}&select=*,cronos_articles(title,source,published_at)&order=impact_score.desc&limit=20`
-      );
+      ) as Impact[];
     }
 
-    // Get prices if ticker
-    let prices: any[] = [];
+    let prices: Price[] = [];
     if (entity.type === 'ticker') {
       prices = await supabaseQuery(
         'cronos_prices',
         `ticker=eq.${entity.value}&select=date,close,volume&order=date.desc&limit=365`
-      );
+      ) as Price[];
     }
 
-    // Enrich articles with sentiment
-    const sentMap: Record<string, any> = {};
+    const sentMap: Record<string, Sentiment> = {};
     for (const s of sentiments) sentMap[s.article_id] = s;
 
-    const articles = links.map((l: any) => ({
+    const articles = links.map((l) => ({
       ...l,
       cronos_articles: l.cronos_articles ? {
         ...l.cronos_articles,
-        sentiment: sentMap[l.article_id || l.cronos_articles?.id] || null,
+        sentiment: sentMap[l.article_id || l.cronos_articles.id] || null,
       } : null,
     }));
 
@@ -118,7 +110,8 @@ export async function GET(
         price_days: prices.length,
       },
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e: unknown) {
+    const error = e as Error;
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

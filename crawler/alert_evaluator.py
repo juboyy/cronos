@@ -23,7 +23,6 @@ HEADERS = {
     'Authorization': f'Bearer {SUPABASE_SERVICE_KEY}',
 }
 
-# Telegram config for notifications
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '5166650114')
 
@@ -48,37 +47,29 @@ def send_telegram(message):
     if not TELEGRAM_BOT_TOKEN:
         print(f'  [TG] No bot token, skipping: {message[:60]}...')
         return False
-    try:
-        data = json.dumps({'chat_id': TELEGRAM_CHAT_ID, 'text': message, 'parse_mode': 'HTML'}).encode()
-        req = urllib.request.Request(
-            f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage',
-            data=data,
-            headers={'Content-Type': 'application/json'},
-        )
-        urllib.request.urlopen(req, timeout=10)
-        return True
-    except Exception as e:
-        print(f'  [TG] Error: {e}')
-        return False
+    data = json.dumps({'chat_id': TELEGRAM_CHAT_ID, 'text': message, 'parse_mode': 'HTML'}).encode()
+    req = urllib.request.Request(
+        f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage',
+        data=data,
+        headers={'Content-Type': 'application/json'},
+    )
+    urllib.request.urlopen(req, timeout=10)
+    return True
 
 def log_trigger(alert_id, alert_name, reason, data):
     """Log alert trigger to cronos_alert_triggers (if table exists) or stdout."""
     print(f'  🔔 TRIGGERED: {alert_name} — {reason}')
-    # Try to insert into triggers log
-    try:
-        body = json.dumps({
-            'alert_id': alert_id,
-            'reason': reason,
-            'data': json.dumps(data),
-        }).encode()
-        req = urllib.request.Request(
-            f'{SUPABASE_URL}/rest/v1/cronos_alert_triggers',
-            data=body,
-            headers={**HEADERS, 'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
-        )
-        urllib.request.urlopen(req, timeout=5)
-    except Exception:
-        pass  # Table might not exist yet, that's ok
+    body = json.dumps({
+        'alert_id': alert_id,
+        'reason': reason,
+        'data': json.dumps(data),
+    }).encode()
+    req = urllib.request.Request(
+        f'{SUPABASE_URL}/rest/v1/cronos_alert_triggers',
+        data=body,
+        headers={**HEADERS, 'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+    )
+    urllib.request.urlopen(req, timeout=5)
 
 def check_sentiment(conditions, ticker):
     """Check if sentiment is below threshold."""
@@ -87,7 +78,6 @@ def check_sentiment(conditions, ticker):
         f'select=score,article_id,cronos_articles(title)&cronos_articles.title=ilike.*{ticker}*&order=created_at.desc&limit=5')
 
     if not recent:
-        # Fallback: check by article-entity link
         return None, None
 
     scores = [s['score'] for s in recent if s.get('score') is not None]
@@ -130,7 +120,6 @@ def check_price(conditions, ticker):
 def check_volume(conditions, ticker):
     """Check if news volume spike detected."""
     threshold = conditions.get('volume_above', 5)
-    # Count articles mentioning this ticker in last 24h vs last 7d avg
     now = datetime.now(timezone.utc)
     day_ago = (now - timedelta(days=1)).isoformat()
     week_ago = (now - timedelta(days=7)).isoformat()
@@ -172,16 +161,11 @@ def run():
         cooldown = alert.get('cooldown_minutes', 60)
         last_triggered = alert.get('last_triggered')
 
-        # Check cooldown
         if last_triggered:
-            try:
-                lt = datetime.fromisoformat(last_triggered.replace('Z', '+00:00'))
-                if (now - lt).total_seconds() < cooldown * 60:
-                    continue
-            except (ValueError, TypeError):
-                pass
+            lt = datetime.fromisoformat(last_triggered.replace('Z', '+00:00'))
+            if (now - lt).total_seconds() < cooldown * 60:
+                continue
 
-        # Evaluate condition
         triggered = False
         trigger_data = None
 
@@ -197,7 +181,6 @@ def run():
             reason = f'{alert_type}: {json.dumps(trigger_data, ensure_ascii=False)[:200]}'
             log_trigger(alert['id'], name, reason, trigger_data)
 
-            # Fire notifications
             channels = alert.get('channels', ['dashboard'])
 
             if 'telegram' in channels:
@@ -208,7 +191,6 @@ def run():
                     msg += f'{k}: <code>{v}</code>\n'
                 send_telegram(msg)
 
-            # Update alert
             update_alert(alert['id'], {
                 'last_triggered': now.isoformat(),
                 'trigger_count': (alert.get('trigger_count', 0) or 0) + 1,

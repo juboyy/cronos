@@ -37,18 +37,13 @@ def _upsert(table, data):
         data=body,
         headers=_headers({'Prefer': 'resolution=merge-duplicates,return=minimal'}),
     )
-    try:
-        resp = urllib.request.urlopen(req, timeout=15)
-        return resp.status
-    except urllib.error.HTTPError as e:
-        print(f'  Impact upsert error: {e.code} — {e.read().decode()[:200]}')
-        return e.code
+    resp = urllib.request.urlopen(req, timeout=15)
+    return resp.status
 
 
 def get_price_at(ticker, target_date):
     """Get closest price for ticker on/near a date."""
     dt_str = target_date.strftime('%Y-%m-%d')
-    # Search ±3 days to handle weekends/holidays
     dt_start = (target_date - timedelta(days=3)).strftime('%Y-%m-%d')
     dt_end = (target_date + timedelta(days=3)).strftime('%Y-%m-%d')
     
@@ -61,7 +56,6 @@ def get_price_at(ticker, target_date):
     if not results:
         return None
     
-    # Find closest date
     best = min(results, key=lambda r: abs(
         (datetime.strptime(r['date'], '%Y-%m-%d') - target_date).days
     ))
@@ -95,15 +89,11 @@ def compute_impact(article, ticker, sentiment_score=0):
     if not pub_date:
         return None
     
-    try:
-        if 'T' in pub_date:
-            pub_dt = datetime.fromisoformat(pub_date.replace('Z', '+00:00').replace('+00:00', ''))
-        else:
-            pub_dt = datetime.strptime(pub_date[:10], '%Y-%m-%d')
-    except (ValueError, TypeError):
-        return None
+    if 'T' in pub_date:
+        pub_dt = datetime.fromisoformat(pub_date.replace('Z', '+00:00').replace('+00:00', ''))
+    else:
+        pub_dt = datetime.strptime(pub_date[:10], '%Y-%m-%d')
     
-    # Get prices at different windows
     t0 = get_price_at(ticker, pub_dt)
     t1d = get_price_at(ticker, pub_dt + timedelta(days=1))
     t5d = get_price_at(ticker, pub_dt + timedelta(days=5))
@@ -115,7 +105,6 @@ def compute_impact(article, ticker, sentiment_score=0):
     if base_price == 0:
         return None
     
-    # Calculate deltas
     delta_1d = None
     delta_5d = None
     
@@ -125,20 +114,16 @@ def compute_impact(article, ticker, sentiment_score=0):
     if t5d and t5d.get('close'):
         delta_5d = ((float(t5d['close']) - base_price) / base_price) * 100
     
-    # Volume anomaly check
     avg_vol = get_avg_volume(ticker)
     current_vol = t0.get('volume', 0) or 0
     volume_ratio = current_vol / avg_vol if avg_vol > 0 else 1.0
     volume_anomaly = volume_ratio > 2.0  # > 2 standard deviations
     
-    # Source trust factor
     source_trust = {
         'reuters': 0.9, 'valor': 0.85, 'infomoney': 0.8,
         'bcb': 0.95, 'b3': 0.85,
     }.get(article.get('source', ''), 0.5)
     
-    # Composite impact score (0 to 1)
-    # Weighted: price delta (40%) + volume (20%) + sentiment magnitude (20%) + source trust (20%)
     delta_factor = 0
     if delta_1d is not None:
         delta_factor = min(abs(delta_1d) / 10.0, 1.0)  # 10% move = max score
@@ -153,7 +138,6 @@ def compute_impact(article, ticker, sentiment_score=0):
         0.2 * source_trust
     )
     
-    # Confidence based on data completeness
     confidence = 0.5
     if delta_1d is not None:
         confidence += 0.2
@@ -186,19 +170,16 @@ def run_impact_scoring(limit=500):
     """Score impact for all unscored article-entity pairs."""
     print('[IMPACT] Finding unscored article-ticker pairs...')
     
-    # Get ticker entities
     ticker_entities = _query(
         'cronos_entities',
         'type=eq.ticker&select=id,value&limit=100'
     )
     
-    # Build company→ticker map for cross-referencing
     company_entities = _query(
         'cronos_entities',
         'type=eq.company&select=id,value,canonical_name&limit=200'
     )
     
-    # Map company names to tickers (rough matching)
     company_ticker_map = {}
     ticker_map = {e['value']: e for e in ticker_entities}
     KNOWN_MAPPINGS = {
@@ -222,13 +203,11 @@ def run_impact_scoring(limit=500):
     
     stats = {'scored': 0, 'skipped': 0, 'errors': 0}
     
-    # Score ticker entities directly
     for entity in ticker_entities:
         ticker = entity['value']
         entity_id = entity['id']
         _score_entity(entity_id, ticker, limit, stats)
     
-    # Score company entities via ticker mapping
     for company_id, ticker in company_ticker_map.items():
         _score_entity(company_id, ticker, limit, stats)
     
@@ -250,7 +229,6 @@ def _score_entity(entity_id, ticker, limit, stats):
     for link in links:
         article_id = link['article_id']
         
-        # Check if already scored
         existing = _query(
             'cronos_impacts',
             f'article_id=eq.{article_id}&ticker=eq.{ticker}&select=id&limit=1'
@@ -259,7 +237,6 @@ def _score_entity(entity_id, ticker, limit, stats):
             stats['skipped'] += 1
             continue
         
-        # Get article data
         articles = _query(
             'cronos_articles',
             f'id=eq.{article_id}&select=title,source,published_at,summary&limit=1'
@@ -269,7 +246,6 @@ def _score_entity(entity_id, ticker, limit, stats):
             continue
         article = articles[0]
         
-        # Get sentiment
         sentiments = _query(
             'cronos_sentiment',
             f'article_id=eq.{article_id}&select=score&limit=1'

@@ -37,10 +37,7 @@ def upsert(table, data):
         data=body,
         headers={**HEADERS, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal'},
     )
-    try:
-        urllib.request.urlopen(req, timeout=15)
-    except urllib.error.HTTPError as e:
-        print(f'  Upsert error: {e.code} — {e.read().decode()[:100]}')
+    urllib.request.urlopen(req, timeout=15)
 
 def run():
     print('[PATTERNS] Loading impacts with articles...')

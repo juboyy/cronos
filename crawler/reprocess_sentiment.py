@@ -66,43 +66,38 @@ def reprocess(limit=50, dry_run=False):
     errors = 0
     
     for a in articles:
-        try:
-            result = analyze_sentiment(a['title'], a.get('summary'))
-            
-            if result.get('model') == 'keyword':
-                # Still falling back to keyword — LLM unavailable
-                print(f"  [SKIP] LLM still unavailable, stopping reprocess")
-                break
-            
-            if dry_run:
-                print(f"  [DRY] {a['title'][:60]}: {a['old_score']:.2f} → {result['score']:.2f} ({result['model']})")
-                upgraded += 1
-                continue
-            
-            # Update the sentiment record
-            body = json.dumps({
-                'score': result['score'],
-                'label': result['label'],
-                'confidence': result['confidence'],
-            }).encode()
-            
-            url = f"{SUPABASE_URL}/rest/v1/cronos_sentiment?id=eq.{a['sentiment_id']}"
-            req = urllib.request.Request(url, data=body, method='PATCH', headers={
-                **_headers(),
-                'Prefer': 'return=minimal',
-            })
-            urllib.request.urlopen(req, timeout=10)
-            
+        result = analyze_sentiment(a['title'], a.get('summary'))
+        
+        if result.get('model') == 'keyword':
+            # Still falling back to keyword — LLM unavailable
+            print(f"  [SKIP] LLM still unavailable, stopping reprocess")
+            break
+        
+        if dry_run:
+            print(f"  [DRY] {a['title'][:60]}: {a['old_score']:.2f} → {result['score']:.2f} ({result['model']})")
             upgraded += 1
-            delta = result['score'] - a['old_score']
-            direction = "↑" if delta > 0 else "↓" if delta < 0 else "→"
-            print(f"  ✓ {a['title'][:60]}: {a['old_score']:.2f} → {result['score']:.2f} {direction} ({result['model']})")
-            
-            time.sleep(1)  # Rate limit
-            
-        except Exception as e:
-            errors += 1
-            print(f"  [ERROR] {a['title'][:40]}: {e}")
+            continue
+        
+        # Update the sentiment record
+        body = json.dumps({
+            'score': result['score'],
+            'label': result['label'],
+            'confidence': result['confidence'],
+        }).encode()
+        
+        url = f"{SUPABASE_URL}/rest/v1/cronos_sentiment?id=eq.{a['sentiment_id']}"
+        req = urllib.request.Request(url, data=body, method='PATCH', headers={
+            **_headers(),
+            'Prefer': 'return=minimal',
+        })
+        urllib.request.urlopen(req, timeout=10)
+        
+        upgraded += 1
+        delta = result['score'] - a['old_score']
+        direction = "↑" if delta > 0 else "↓" if delta < 0 else "→"
+        print(f"  ✓ {a['title'][:60]}: {a['old_score']:.2f} → {result['score']:.2f} {direction} ({result['model']})")
+        
+        time.sleep(1)  # Rate limit
     
     print(f"\nReprocess complete: {upgraded} upgraded, {errors} errors")
 

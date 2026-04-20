@@ -1,11 +1,11 @@
-import { supabaseQuery } from '@/lib/supabase';
+import { Impact, Price } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 async function getData() {
   const [impacts, prices] = await Promise.all([
-    supabaseQuery('cronos_impacts', 'select=*,cronos_articles(title,source,published_at)&order=impact_score.desc&limit=40'),
-    supabaseQuery('cronos_prices', 'select=ticker,date,close,volume&order=date.desc&limit=100'),
+    supabaseQuery('cronos_impacts', 'select=*,cronos_articles(title,source,published_at)&order=impact_score.desc&limit=40') as Promise<Impact[]>,
+    supabaseQuery('cronos_prices', 'select=ticker,date,close,volume&order=date.desc&limit=100') as Promise<Price[]>,
   ]);
 
   // Aggregate by ticker
@@ -28,7 +28,7 @@ async function getData() {
 
 function ImpactBar({ score }: { score: number }) {
   const w = Math.min(score * 100, 100);
-  const color = score > 0.6 ? 'var(--signal-down)' : score > 0.35 ? 'var(--signal-neutral)' : 'var(--accent)';
+  const color = score > 0.6 ? '#64748b' : score > 0.35 ? '#6b7280' : 'var(--accent)';
   return (
     <div style={{ width: '80px', height: '3px', background: 'var(--border-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
       <div style={{ width: `${w}%`, height: '100%', background: color, borderRadius: '2px', transition: 'width 0.6s ease' }} />
@@ -91,7 +91,7 @@ export default async function ImpactPage() {
 
                   {/* Mini bar viz */}
                   <div style={{ height: '3px', background: 'var(--border-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
-                    <div style={{ width: `${intensity * 100}%`, height: '100%', background: `hsl(${r.avgScore > 0.5 ? 0 : r.avgScore > 0.3 ? 45 : 150} 60% 50%)`, transition: 'width 0.6s ease' }} />
+                    <div style={{ width: `${intensity * 100}%`, height: '100%', background: r.avgScore > 0.5 ? '#64748b' : r.avgScore > 0.3 ? '#6b7280' : 'var(--accent)', transition: 'width 0.6s ease' }} />
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)' }}>
@@ -135,7 +135,7 @@ export default async function ImpactPage() {
           <span style={{ textAlign: 'right' }}>Conf</span>
         </div>
 
-        {impacts.map((imp: any, i: number) => (
+        {impacts.map((imp, i: number) => (
           <div
             key={imp.id}
             className="interactive stagger"
@@ -152,7 +152,10 @@ export default async function ImpactPage() {
               {imp.ticker}
             </span>
             <div style={{ overflow: 'hidden' }}>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div 
+                title={imp.cronos_articles?.title || ''}
+                style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              >
                 {imp.cronos_articles?.title || '—'}
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '2px' }}>
