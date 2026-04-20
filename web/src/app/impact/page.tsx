@@ -1,3 +1,4 @@
+import { supabaseQuery } from '@/lib/supabase';
 import { Impact, Price } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -166,12 +167,12 @@ export default async function ImpactPage() {
             <div style={{ textAlign: 'right' }}><Delta value={imp.delta_5d} /></div>
             <div style={{ textAlign: 'right' }}>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: imp.volume_anomaly ? 'var(--signal-down)' : 'var(--text-tertiary)' }}>
-                {imp.volume_ratio?.toFixed(1)}x
+                {imp.volume_ratio != null ? imp.volume_ratio.toFixed(1) : '—'}x
               </span>
             </div>
             <ImpactBar score={imp.impact_score} />
             <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
-              {(imp.confidence * 100).toFixed(0)}%
+              {imp.confidence != null ? (imp.confidence * 100).toFixed(0) : '—'}%
             </div>
           </div>
         ))}
