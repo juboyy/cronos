@@ -19,6 +19,9 @@ from crawlers.exame import ExameCrawler
 from crawlers.moneytimes import MoneyTimesCrawler
 from crawlers.investing_br import InvestingBRCrawler
 from crawlers.seudinheiro import SeuDinheiroCrawler
+from crawlers.bloomberg_linea import BloombergLineaCrawler
+from crawlers.broadcast import BroadcastCrawler
+from crawlers.cnn_brasil import CNNBrasilCrawler
 
 
 ALL_CRAWLERS = {
@@ -33,6 +36,9 @@ ALL_CRAWLERS = {
     'moneytimes': MoneyTimesCrawler,
     'investing_br': InvestingBRCrawler,
     'seudinheiro': SeuDinheiroCrawler,
+    'bloomberg_linea': BloombergLineaCrawler,
+    'broadcast': BroadcastCrawler,
+    'cnn_brasil': CNNBrasilCrawler,
 }
 
 
