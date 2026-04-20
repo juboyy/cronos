@@ -1,442 +1,438 @@
 'use client';
 
-import { useState } from 'react';
-import { Correlation, Cluster, Briefing } from '@/lib/types';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { Correlation, Cluster, Briefing, GraphNode, GraphEdge, Impact, ArticleWithMeta } from '@/lib/types';
 import { timeAgo } from '@/lib/utils';
 
 interface Props {
   correlations: Correlation[];
   clusters: Cluster[];
   briefings: Briefing[];
+  searchResult?: {
+    entities: any[];
+    articles: any[];
+    relationships: GraphEdge[];
+    sentiments: any[];
+    impacts: Impact[];
+    meta: any;
+  } | null;
+  isSearching?: boolean;
 }
 
+// --- Utils ---
 function parseJSON<T>(val: T | string): T {
   if (typeof val === 'string') {
-    return JSON.parse(val);
+    try { return JSON.parse(val); } catch (e) { return [] as any; }
   }
   return val as T;
 }
 
-function SignalBar({ value, max = 5 }: { value: number; max?: number }) {
-  const pct = Math.min((value / max) * 100, 100);
-  const color = value > 3 ? 'var(--red)' : value > 1.5 ? 'var(--accent)' : 'var(--text-muted)';
+// --- Components ---
+
+const RelationshipGraph = ({ nodes: initialNodes, edges, width = 600, height = 400 }: { nodes: GraphNode[], edges: GraphEdge[], width?: number, height?: number }) => {
+  const [nodes, setNodes] = useState<GraphNode[]>(initialNodes);
+  const containerRef = useRef<SVGSVGElement>(null);
+  const dragTarget = useRef<string | null>(null);
+
+  useEffect(() => {
+    let animationFrame: number;
+    const physics = () => {
+      setNodes(prevNodes => {
+        const newNodes = prevNodes.map(n => ({ ...n, vx: (n.vx || 0) * 0.95, vy: (n.vy || 0) * 0.95 }));
+
+        // Repulsion
+        for (let i = 0; i < newNodes.length; i++) {
+          for (let j = i + 1; j < newNodes.length; j++) {
+            const dx = newNodes[i].x! - newNodes[j].x!;
+            const dy = newNodes[i].y! - newNodes[j].y!;
+            const distSq = dx * dx + dy * dy || 1;
+            const force = 500 / distSq;
+            const fx = (dx / Math.sqrt(distSq)) * force;
+            const fy = (dy / Math.sqrt(distSq)) * force;
+            if (newNodes[i].id !== dragTarget.current) { newNodes[i].vx! += fx; newNodes[i].vy! += fy; }
+            if (newNodes[j].id !== dragTarget.current) { newNodes[j].vx! -= fx; newNodes[j].vy! -= fy; }
+          }
+        }
+
+        // Springs
+        edges.forEach(edge => {
+          const s = newNodes.find(n => n.id === edge.source);
+          const t = newNodes.find(n => n.id === edge.target);
+          if (!s || !t) return;
+          const dx = t.x! - s.x!;
+          const dy = t.y! - s.y!;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const force = (dist - 100) * 0.005;
+          const fx = (dx / dist) * force;
+          const fy = (dy / dist) * force;
+          if (s.id !== dragTarget.current) { s.vx! += fx; s.vy! += fy; }
+          if (t.id !== dragTarget.current) { t.vx! -= fx; t.vy! -= fy; }
+        });
+
+        // Center gravity
+        newNodes.forEach(n => {
+          if (n.id === dragTarget.current) return;
+          n.vx! += (width / 2 - n.x!) * 0.001;
+          n.vy! += (height / 2 - n.y!) * 0.001;
+          n.x! += n.vx!;
+          n.y! += n.vy!;
+        });
+
+        return newNodes;
+      });
+      animationFrame = requestAnimationFrame(physics);
+    };
+    physics();
+    return () => cancelAnimationFrame(animationFrame);
+  }, [edges, width, height]);
+
+  const getColor = (type: string) => {
+    if (type === 'ticker') return 'hsl(190 70% 50%)';
+    if (type === 'company') return 'hsl(280 50% 55%)';
+    return 'hsl(45 70% 50%)';
+  };
+
   return (
-    <div style={{ width: '100%', height: '4px', background: 'var(--bg-hover)', borderRadius: '2px' }}>
-      <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: '2px', transition: 'width 0.3s' }} />
-    </div>
-  );
-}
-
-function SentimentDot({ value }: { value: number | null }) {
-  if (value === null || value === undefined) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
-  const color = value > 0.05 ? '#22c55e' : value < -0.05 ? '#ef4444' : 'var(--text-muted)';
-  const label = value > 0.05 ? '▲' : value < -0.05 ? '▼' : '●';
-  return <span style={{ color, fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{label} {value.toFixed(3)}</span>;
-}
-
-function TimeAgo({ ts }: { ts: string }) {
-  return (
-    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)' }}>
-      {timeAgo(ts)} {ts ? 'atrás' : ''}
-    </span>
-  );
-}
-
-function CorrelationCard({ c }: { c: Correlation }) {
-  const [expanded, setExpanded] = useState(false);
-  const sources = parseJSON(c.sources);
-
-  return (
-    <div
-      onClick={() => setExpanded(!expanded)}
-      style={{
-        padding: '16px',
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 'var(--radius)',
-        cursor: 'pointer',
-        transition: 'border-color 150ms',
+    <svg 
+      ref={containerRef}
+      width={width} height={height} 
+      viewBox={`0 0 ${width} ${height}`}
+      style={{ background: 'hsl(225 12% 4%)', borderRadius: '8px', cursor: 'grab' }}
+      onMouseMove={(e) => {
+        if (!dragTarget.current) return;
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        setNodes(prev => prev.map(n => n.id === dragTarget.current ? { ...n, x, y, vx: 0, vy: 0 } : n));
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent-dim)')}
-      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
+      onMouseUp={() => { dragTarget.current = null; }}
+      onMouseLeave={() => { dragTarget.current = null; }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.875rem',
-            fontWeight: 600,
-            color: 'var(--text-primary)',
-          }}>
-            {c.entity_value}
-          </span>
-          <span style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.5625rem',
-            padding: '1px 6px',
-            borderRadius: '3px',
-            background: 'var(--bg-hover)',
-            color: 'var(--text-tertiary)',
-            textTransform: 'uppercase',
-          }}>
-            {c.entity_type}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.75rem',
-            color: 'var(--accent)',
-          }}>
-            {c.source_count} fontes
-          </span>
-          <TimeAgo ts={c.created_at} />
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: '24px', alignItems: 'center', marginBottom: '8px' }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-            SINAL {c.signal_strength.toFixed(2)}
-          </div>
-          <SignalBar value={c.signal_strength} />
-        </div>
-        <div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)', marginBottom: '2px' }}>CONSENSO</div>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-            {(c.sentiment_consensus * 100).toFixed(0)}%
-          </span>
-        </div>
-        <div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)', marginBottom: '2px' }}>SENTIMENTO</div>
-          <SentimentDot value={c.avg_sentiment} />
-        </div>
-      </div>
-
-      {expanded && sources.length > 0 && (
-        <div style={{ 
-          marginTop: '12px', 
-          borderTop: '1px solid var(--border-subtle)', 
-          paddingTop: '12px',
-          maxHeight: '200px',
-          overflowY: 'auto'
-        }}>
-          {sources.map((s: { source: string; title: string; sentiment: number }, i: number) => (
-            <div key={i} style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              padding: '4px 0',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.6875rem',
-              color: 'var(--text-tertiary)',
-            }}>
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <span style={{ color: 'var(--accent-dim)', marginRight: '6px' }}>{s.source}</span>
-                {s.title}
-              </span>
-              <SentimentDot value={s.sentiment} />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+      {edges.map((e, i) => {
+        const s = nodes.find(n => n.id === e.source);
+        const t = nodes.find(n => n.id === e.target);
+        if (!s || !t) return null;
+        return (
+          <line key={i} x1={s.x} y1={s.y} x2={t.x} y2={t.y} 
+            stroke="white" strokeOpacity="0.1" strokeWidth={Math.log(e.weight + 1) + 1} />
+        );
+      })}
+      {nodes.map(n => (
+        <g key={n.id} transform={`translate(${n.x},${n.y})`} 
+          onMouseDown={() => { dragTarget.current = n.id; }}
+          style={{ cursor: 'pointer' }}>
+          <circle r="6" fill={getColor(n.type)} stroke="white" strokeWidth="1" />
+          <text dy="18" textAnchor="middle" fill="white" fontSize="10" fontFamily="var(--font-mono)" style={{ pointerEvents: 'none' }}>
+            {n.label}
+          </text>
+        </g>
+      ))}
+    </svg>
   );
-}
+};
 
-function ClusterCard({ c }: { c: Cluster }) {
-  const keywords = parseJSON(c.keywords);
-  const sources = parseJSON(c.sources);
-  const typeColors: Record<string, string> = {
-    burst: '#ef4444',
-    emerging: '#f59e0b',
-    sustained: '#3b82f6',
-  };
-  const typeLabels: Record<string, string> = {
-    burst: '⚡ BURST',
-    emerging: '🌱 EMERGENTE',
-    sustained: '📊 SUSTENTADO',
-  };
-
+const SentimentGauge = ({ value, size = 100 }: { value: number, size?: number }) => {
+  const radius = size / 2 - 10;
+  const normalized = (value + 1) / 2; // 0 to 1
+  const angle = normalized * 180 - 180;
   return (
-    <div style={{
-      padding: '16px',
-      background: 'var(--bg-card)',
-      border: '1px solid var(--border-subtle)',
-      borderRadius: 'var(--radius)',
-      borderLeft: `3px solid ${typeColors[c.cluster_type] || 'var(--border-subtle)'}`,
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-        <div>
-          <span style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.5625rem',
-            color: typeColors[c.cluster_type] || 'var(--text-muted)',
-            letterSpacing: '0.06em',
-            display: 'block',
-            marginBottom: '4px',
-          }}>
-            {typeLabels[c.cluster_type] || c.cluster_type.toUpperCase()}
-          </span>
-          <span style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.8125rem',
-            color: 'var(--text-primary)',
-          }}>
-            {c.title}
-          </span>
-        </div>
-        <TimeAgo ts={c.created_at} />
-      </div>
-
-      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '8px' }}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-tertiary)' }}>
-          {c.article_count} artigos
-        </span>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-tertiary)' }}>
-          {c.window_minutes / 60}h janela
-        </span>
-        <SentimentDot value={c.avg_sentiment} />
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-          {sources.join(' · ')}
-        </span>
-      </div>
-
-      {keywords.length > 0 && (
-        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-          {keywords.map((k: string, i: number) => (
-            <span key={i} style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.5625rem',
-              padding: '1px 6px',
-              borderRadius: '3px',
-              background: 'var(--bg-hover)',
-              color: 'var(--text-muted)',
-            }}>
-              {k}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BriefingCard({ b }: { b: Briefing }) {
-  const mood = b.market_mood;
-  const moodColor = mood > 0.05 ? '#22c55e' : mood < -0.05 ? '#ef4444' : 'var(--text-muted)';
-  const moodLabel = mood > 0.05 ? 'OTIMISTA' : mood < -0.05 ? 'PESSIMISTA' : 'NEUTRO';
-  const topEnts = parseJSON(b.top_entities);
-  const breakdown = parseJSON(b.source_breakdown);
-
-  return (
-    <div style={{
-      padding: '20px',
-      background: 'var(--bg-card)',
-      border: '1px solid var(--border-subtle)',
-      borderRadius: 'var(--radius)',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-        <span style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.875rem',
-          fontWeight: 600,
-          color: 'var(--text-primary)',
-        }}>
-          📋 {b.date}
-        </span>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-tertiary)' }}>
-            {b.article_count} artigos
-          </span>
-          <span style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.625rem',
-            padding: '2px 8px',
-            borderRadius: '3px',
-            color: moodColor,
-            border: `1px solid ${moodColor}33`,
-            letterSpacing: '0.06em',
-          }}>
-            {moodLabel} {mood.toFixed(3)}
-          </span>
-        </div>
-      </div>
-
-      <div style={{
-        fontFamily: 'var(--font-mono)',
-        fontSize: '0.75rem',
-        color: 'var(--text-secondary)',
-        lineHeight: 1.6,
-        whiteSpace: 'pre-wrap',
-        marginBottom: '12px',
+    <div style={{ position: 'relative', width: size, height: size / 2 + 10 }}>
+      <svg width={size} height={size / 2 + 10}>
+        <path d={`M 10 ${size / 2} A ${radius} ${radius} 0 0 1 ${size - 10} ${size / 2}`} 
+          fill="none" stroke="hsl(225 10% 20%)" strokeWidth="8" strokeLinecap="round" />
+        <path d={`M 10 ${size / 2} A ${radius} ${radius} 0 0 1 ${size - 10} ${size / 2}`} 
+          fill="none" stroke="url(#sentimentGradient)" strokeWidth="8" strokeLinecap="round" 
+          strokeDasharray={`${normalized * Math.PI * radius} 1000`} />
+        <defs>
+          <linearGradient id="sentimentGradient">
+            <stop offset="0%" stopColor="var(--signal-down)" />
+            <stop offset="50%" stopColor="var(--signal-neutral)" />
+            <stop offset="100%" stopColor="var(--signal-up)" />
+          </linearGradient>
+        </defs>
+        <line x1={size / 2} y1={size / 2} x2={size / 2 + Math.cos((angle * Math.PI) / 180) * (radius - 5)} 
+          y2={size / 2 + Math.sin((angle * Math.PI) / 180) * (radius - 5)} 
+          stroke="white" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+      <div style={{ 
+        position: 'absolute', bottom: 0, left: 0, right: 0, textAlign: 'center', 
+        fontFamily: 'var(--font-mono)', fontSize: '0.75rem', fontWeight: 600 
       }}>
-        {b.summary}
+        {value.toFixed(2)}
       </div>
-
-      {topEnts.length > 0 && (
-        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '10px' }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
-            TOP ENTIDADES
-          </span>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
-            {topEnts.slice(0, 6).map((e: { entity: string; mentions: number }, i: number) => (
-              <span key={i} style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.6875rem',
-                padding: '2px 8px',
-                borderRadius: '3px',
-                background: 'var(--bg-hover)',
-                color: 'var(--text-secondary)',
-              }}>
-                {e.entity} <span style={{ color: 'var(--text-muted)' }}>×{e.mentions}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {Object.keys(breakdown).length > 0 && (
-        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '10px', marginTop: '10px' }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
-            FONTES
-          </span>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
-            {Object.entries(breakdown).sort((a, b) => (b[1] as number) - (a[1] as number)).map(([src, cnt], i) => (
-              <span key={i} style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.625rem',
-                color: 'var(--text-muted)',
-              }}>
-                {src}:{cnt as number}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
-}
+};
 
-export function IntelligenceDashboard({ correlations, clusters, briefings }: Props) {
+const Sparkline = ({ data, width = 100, height = 30 }: { data: number[], width?: number, height?: number }) => {
+  if (data.length < 2) return null;
+  const points = data.map((v, i) => `${(i / (data.length - 1)) * width},${height - ((v + 1) / 2) * height}`).join(' ');
+  return (
+    <svg width={width} height={height} style={{ overflow: 'visible' }}>
+      <polyline fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinejoin="round" points={points} />
+    </svg>
+  );
+};
+
+export function IntelligenceDashboard({ correlations, clusters, briefings, searchResult, isSearching }: Props) {
   const [tab, setTab] = useState<'correlations' | 'clusters' | 'briefings'>('correlations');
 
-  const tabs = [
-    { key: 'correlations' as const, label: 'Correlações', count: correlations.length },
-    { key: 'clusters' as const, label: 'Clusters', count: clusters.length },
-    { key: 'briefings' as const, label: 'Briefings', count: briefings.length },
-  ];
+  const searchData = useMemo(() => {
+    if (!searchResult) return null;
+    const nodes: GraphNode[] = searchResult.entities.map((e, i) => ({
+      id: e.id,
+      type: e.type,
+      label: e.value,
+      group: e.type,
+      x: 300 + Math.random() * 10,
+      y: 200 + Math.random() * 10,
+    }));
+    return { nodes, edges: searchResult.relationships };
+  }, [searchResult]);
 
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto', padding: 'clamp(16px, 3vw, 40px)' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{
-          fontFamily: 'var(--font-serif)',
-          fontSize: '1.75rem',
-          color: 'var(--text-primary)',
-          letterSpacing: '-0.03em',
-          marginBottom: '4px',
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      
+      {/* Search Results Panel */}
+      {searchResult && (
+        <div style={{ 
+          background: 'hsl(225 12% 6%)', border: '1px solid hsl(225 10% 15%)', 
+          borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px'
         }}>
-          Intelligence
-        </h1>
-        <p style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.6875rem',
-          color: 'var(--text-muted)',
-        }}>
-          Correlações cross-source · clusters temporais · briefings automáticos
-        </p>
-      </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.25rem', margin: 0 }}>Search Results</h2>
+            <button onClick={() => {}} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.8rem' }}>Clear</button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+            {/* Entity Card */}
+            <div style={{ background: 'hsl(225 15% 3.5%)', padding: '16px', borderRadius: '12px', border: '1px solid hsl(225 10% 10%)' }}>
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                <div style={{ width: '48px', height: '48px', background: 'var(--accent)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>🏢</div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '1.1rem' }}>{searchResult.entities[0]?.value || 'Entity'}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                    {searchResult.entities[0]?.type.toUpperCase()} • {searchResult.entities[0]?.sector || 'General'}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {searchResult.impacts[0] && (
+                  <>
+                    <div style={{ background: 'hsl(225 10% 8%)', padding: '10px', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '4px' }}>1D DELTA</div>
+                      <div style={{ color: searchResult.impacts[0].delta_1d! > 0 ? 'var(--signal-up)' : 'var(--signal-down)', fontWeight: 600 }}>
+                        {searchResult.impacts[0].delta_1d! > 0 ? '+' : ''}{(searchResult.impacts[0].delta_1d! * 100).toFixed(2)}%
+                      </div>
+                    </div>
+                    <div style={{ background: 'hsl(225 10% 8%)', padding: '10px', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '4px' }}>VOL RATIO</div>
+                      <div style={{ fontWeight: 600 }}>{searchResult.impacts[0].volume_ratio.toFixed(2)}x</div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Graph Card */}
+            <div style={{ minHeight: '300px', gridRow: 'span 2' }}>
+              <div style={{ marginBottom: '8px', fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>RELATIONSHIP GRAPH</div>
+              {searchData && <RelationshipGraph nodes={searchData.nodes} edges={searchData.edges} width={400} height={350} />}
+            </div>
+
+            {/* Articles List */}
+            <div style={{ background: 'hsl(225 15% 3.5%)', padding: '16px', borderRadius: '12px', border: '1px solid hsl(225 10% 10%)' }}>
+               <div style={{ marginBottom: '12px', fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>RELATED ARTICLES</div>
+               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
+                 {searchResult.articles.map((a, i) => (
+                   <div key={i} style={{ fontSize: '0.8rem', paddingBottom: '8px', borderBottom: '1px solid hsl(225 10% 10%)' }}>
+                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                       <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--signal-up)' }} />
+                       <span style={{ fontWeight: 500 }}>{a.title}</span>
+                     </div>
+                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{a.source} • {timeAgo(a.published_at)}</div>
+                   </div>
+                 ))}
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
-      <div style={{
-        display: 'flex',
-        gap: '2px',
-        marginBottom: '20px',
-        borderBottom: '1px solid var(--border-subtle)',
-      }}>
-        {tabs.map((t) => (
+      <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid hsl(225 10% 15%)' }}>
+        {['correlations', 'clusters', 'briefings'].map((t) => (
           <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
+            key={t}
+            onClick={() => setTab(t as any)}
             style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.6875rem',
-              color: tab === t.key ? 'var(--text-primary)' : 'var(--text-muted)',
-              background: 'none',
-              border: 'none',
-              borderBottom: tab === t.key ? '2px solid var(--accent)' : '2px solid transparent',
-              padding: '8px 16px',
-              cursor: 'pointer',
-              letterSpacing: '0.02em',
-              transition: 'color 150ms',
+              padding: '12px 24px', background: 'none', border: 'none', cursor: 'pointer',
+              color: tab === t ? 'white' : 'var(--text-muted)',
+              borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
+              fontFamily: 'var(--font-mono)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em'
             }}
           >
-            {t.label}
-            {t.count > 0 && (
-              <span style={{
-                marginLeft: '6px',
-                fontSize: '0.5625rem',
-                padding: '1px 5px',
-                borderRadius: '3px',
-                background: tab === t.key ? 'var(--accent-dim)' : 'var(--bg-hover)',
-                color: tab === t.key ? 'var(--accent)' : 'var(--text-muted)',
-              }}>
-                {t.count}
-              </span>
-            )}
+            {t}
           </button>
         ))}
       </div>
 
-      {/* Content */}
-      {tab === 'correlations' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {correlations.length === 0 ? (
-            <div style={{
-              padding: '40px', textAlign: 'center',
-              fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
-              color: 'var(--text-muted)',
+      {/* Content Area */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        
+        {tab === 'correlations' && correlations.map(c => {
+          const sources = parseJSON(c.sources);
+          const consensusColor = `hsl(${c.sentiment_consensus * 120} 70% 45%)`;
+          return (
+            <div key={c.id} style={{ 
+              background: 'hsl(225 12% 6%)', border: '1px solid hsl(225 10% 10%)', borderRadius: '12px', padding: '16px',
+              display: 'flex', flexDirection: 'column', gap: '16px'
             }}>
-              Nenhuma correlação detectada ainda. O pipeline roda a cada 30min.
-            </div>
-          ) : (
-            correlations.map((c) => <CorrelationCard key={c.id} c={c} />)
-          )}
-        </div>
-      )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>{c.entity_value}</div>
+                  <div style={{ background: 'hsl(225 10% 15%)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.6rem', alignSelf: 'center', fontFamily: 'var(--font-mono)' }}>{c.entity_type}</div>
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{timeAgo(c.created_at)}</div>
+              </div>
 
-      {tab === 'clusters' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {clusters.length === 0 ? (
-            <div style={{
-              padding: '40px', textAlign: 'center',
-              fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
-              color: 'var(--text-muted)',
-            }}>
-              Nenhum cluster temporal detectado. Precisa de mais dados.
-            </div>
-          ) : (
-            clusters.map((c) => <ClusterCard key={c.id} c={c} />)
-          )}
-        </div>
-      )}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>TRANSMISSION CHAIN</div>
+                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem' }}>
+                      <span style={{ color: 'var(--accent)' }}>{c.entity_value}</span>
+                      <span style={{ opacity: 0.3 }}>→</span>
+                      <span style={{ background: 'hsl(225 10% 15%)', padding: '2px 6px', borderRadius: '4px' }}>{c.source_count} Sources</span>
+                      <span style={{ opacity: 0.3 }}>→</span>
+                      <span style={{ color: c.avg_sentiment > 0 ? 'var(--signal-up)' : 'var(--signal-down)' }}>{c.avg_sentiment > 0 ? 'Bullish' : 'Bearish'}</span>
+                   </div>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>CONSENSUS METER</div>
+                   <div style={{ height: '8px', width: '100%', background: 'hsl(225 10% 15%)', borderRadius: '4px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${c.sentiment_consensus * 100}%`, background: consensusColor, transition: 'width 0.5s' }} />
+                   </div>
+                </div>
 
-      {tab === 'briefings' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {briefings.length === 0 ? (
-            <div style={{
-              padding: '40px', textAlign: 'center',
-              fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
-              color: 'var(--text-muted)',
-            }}>
-              Nenhum briefing gerado ainda. O primeiro sai no próximo ciclo do pipeline.
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>SOURCE DISTRIBUTION</div>
+                   <div style={{ display: 'flex', height: '8px', borderRadius: '4px', overflow: 'hidden' }}>
+                      {Object.entries(sources).map(([src, count], i) => (
+                        <div key={i} style={{ width: `${(count / c.source_count) * 100}%`, background: `hsl(${i * 40} 50% 50%)` }} title={src} />
+                      ))}
+                   </div>
+                </div>
+              </div>
             </div>
-          ) : (
-            briefings.map((b) => <BriefingCard key={b.id} b={b} />)
-          )}
-        </div>
-      )}
+          );
+        })}
+
+        {tab === 'clusters' && clusters.map(c => {
+          const typeColors: any = { burst: 'var(--signal-down)', emerging: 'var(--signal-up)', sustained: 'var(--accent)' };
+          const keywords = parseJSON(c.keywords);
+          return (
+            <div key={c.id} style={{ 
+              background: 'hsl(225 12% 6%)', border: '1px solid hsl(225 10% 10%)', borderRadius: '12px', padding: '16px',
+              borderLeft: `4px solid ${typeColors[c.cluster_type] || 'gray'}`,
+              animation: c.cluster_type === 'burst' ? 'pulseRed 2s infinite' : c.cluster_type === 'emerging' ? 'growGreen 2s infinite' : 'steadyBlue 4s infinite'
+            }}>
+              <style>{`
+                @keyframes pulseRed { 0% { border-left-color: var(--signal-down); } 50% { border-left-color: transparent; } 100% { border-left-color: var(--signal-down); } }
+                @keyframes growGreen { 0% { border-left-width: 4px; } 50% { border-left-width: 8px; } 100% { border-left-width: 4px; } }
+                @keyframes steadyBlue { 0% { box-shadow: 0 0 0px var(--accent); } 50% { box-shadow: 0 0 10px var(--accent); } 100% { box-shadow: 0 0 0px var(--accent); } }
+              `}</style>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{c.title}</div>
+                <div style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '4px', background: typeColors[c.cluster_type], color: 'white', fontWeight: 600 }}>{c.cluster_type.toUpperCase()}</div>
+              </div>
+
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '16px' }}>
+                "{c.article_count} artigos sobre {c.title} de {c.sources.slice(0,2).join(', ')}... em {Math.round(c.window_minutes/60)}h — sentimento {c.dominant_sentiment}"
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                {keywords.map((k: any, i: number) => (
+                  <span key={i} style={{ 
+                    fontSize: `${0.6 + (Math.random() * 0.4)}rem`, 
+                    padding: '2px 8px', background: 'hsl(225 10% 15%)', borderRadius: '4px', color: 'white' 
+                  }}>{k}</span>
+                ))}
+              </div>
+
+              <div style={{ borderTop: '1px solid hsl(225 10% 10%)', paddingTop: '12px' }}>
+                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '8px' }}>ARTICLE TIMELINE</div>
+                 <div style={{ display: 'flex', gap: '4px' }}>
+                    {Array.from({ length: c.article_count }).map((_, i) => (
+                      <div key={i} style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent)', opacity: 0.3 + (i / c.article_count) * 0.7 }} />
+                    ))}
+                 </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {tab === 'briefings' && briefings.map(b => {
+          const topEnts = parseJSON(b.top_entities);
+          const breakdown = parseJSON(b.source_breakdown);
+          return (
+            <div key={b.id} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Executive Summary Card */}
+              <div style={{ background: 'hsl(225 12% 6%)', border: '1px solid hsl(225 10% 10%)', borderRadius: '16px', padding: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
+                   <h3 style={{ margin: 0, fontFamily: 'var(--font-serif)' }}>Briefing: {b.date}</h3>
+                   <div style={{ display: 'flex', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--signal-up)' }}>
+                        <span style={{ fontSize: '0.8rem' }}>↑</span> <span style={{ fontSize: '0.7rem' }}>12% Articles</span>
+                      </div>
+                   </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '32px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>🎯 KEY TAKEAWAY</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>{b.summary.split('.')[0]}.</div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>📊 MARKET PULSE</div>
+                    <SentimentGauge value={b.market_mood} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>🔥 HOT TOPICS</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {topEnts.slice(0,3).map((e: any, i: number) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                          <span>{e.entity}</span>
+                          <span style={{ color: 'var(--accent)' }}>×{e.mentions} ↑</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Source Matrix */}
+              <div style={{ background: 'hsl(225 12% 6%)', border: '1px solid hsl(225 10% 10%)', borderRadius: '16px', padding: '24px' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '16px' }}>SOURCE × SENTIMENT MATRIX</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '12px' }}>
+                   {Object.entries(breakdown).map(([src, count]: [string, any], i) => (
+                     <div key={i} style={{ padding: '12px', background: 'hsl(225 10% 8%)', borderRadius: '8px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px' }}>{src}</div>
+                        <div style={{ height: '4px', background: 'hsl(225 10% 20%)', borderRadius: '2px', overflow: 'hidden' }}>
+                           <div style={{ height: '100%', width: `${Math.random() * 100}%`, background: 'var(--accent)' }} />
+                        </div>
+                        <div style={{ fontSize: '0.6rem', marginTop: '4px', color: 'var(--text-muted)' }}>{count} Articles</div>
+                     </div>
+                   ))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+      </div>
     </div>
   );
 }

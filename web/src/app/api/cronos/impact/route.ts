@@ -6,7 +6,7 @@ export async function GET(req: NextRequest) {
   const limit = req.nextUrl.searchParams.get('limit') || '50';
   const minScore = req.nextUrl.searchParams.get('min_score') || '0';
 
-  let query = `select=*,cronos_articles(title,source,published_at)&order=impact_score.desc&limit=${limit}`;
+  let query = `select=*,cronos_articles(title,source,published_at,url)&order=impact_score.desc&limit=${limit}`;
   if (ticker) query += `&ticker=eq.${ticker}`;
   if (parseFloat(minScore) > 0) query += `&impact_score=gte.${minScore}`;
 

@@ -64,14 +64,39 @@ export function ArticleFeed({ articles, totalCount }: { articles: FeedArticle[];
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<FeedArticle[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const searchTimerRef = { current: null as ReturnType<typeof setTimeout> | null };
 
   const cutoff = getTimeCutoff(timeFilter);
-  const allArticles = [...articles, ...extraArticles].filter(a => {
+  const baseArticles = searchResults !== null ? searchResults : [...articles, ...extraArticles];
+  const allArticles = baseArticles.filter(a => {
     if (!cutoff) return true;
     return (a.published_at || '') >= cutoff;
   });
-  const total = totalCount ?? allArticles.length;
-  const hasMore = timeFilter === 'all' && (articles.length + extraArticles.length) < total;
+  const total = searchResults !== null ? searchResults.length : (totalCount ?? allArticles.length);
+  const hasMore = searchResults === null && timeFilter === 'all' && (articles.length + extraArticles.length) < total;
+
+  async function handleSearch(q: string) {
+    setSearchQuery(q);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!q.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    searchTimerRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q.trim())}&limit=50`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data.articles || []);
+        }
+      } catch { /* silent */ }
+      setSearching(false);
+    }, 400);
+  }
 
   async function loadMore() {
     if (loadingMore || !hasMore) return;
@@ -91,6 +116,47 @@ export function ArticleFeed({ articles, totalCount }: { articles: FeedArticle[];
 
   return (
     <>
+      {/* Search Bar */}
+      <div style={{ padding: '0 16px', marginBottom: '12px' }}>
+        <div style={{ position: 'relative' }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => handleSearch(e.target.value)}
+            placeholder="Buscar artigos... (ex: PETR4, Selic, inflação)"
+            style={{
+              width: '100%', padding: '10px 14px 10px 36px',
+              background: 'var(--bg-surface)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)', color: 'var(--text-primary)',
+              fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', outline: 'none',
+            }}
+          />
+          <span style={{
+            position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+            fontSize: '0.875rem', color: 'var(--text-muted)', pointerEvents: 'none',
+          }}>
+            {searching ? '◈' : '⌕'}
+          </span>
+          {searchQuery && (
+            <button
+              onClick={() => { setSearchQuery(''); setSearchResults(null); }}
+              style={{
+                position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+                background: 'transparent', border: 'none', color: 'var(--text-muted)',
+                cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        {searchResults !== null && (
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+            {searchResults.length} resultado{searchResults.length !== 1 ? 's' : ''} para "{searchQuery}"
+          </div>
+        )}
+      </div>
+
       {/* Time Filter Bar */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', padding: '0 16px' }}>
         {TIME_FILTERS.map(f => (
