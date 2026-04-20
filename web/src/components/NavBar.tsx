@@ -8,7 +8,8 @@ const NAV = [
   { href: '/intelligence', label: 'Intel' },
   { href: '/briefing', label: 'Briefing' },
   { href: '/impact', label: 'Impacto' },
-  { href: '/simulate', label: 'Simular' },
+  { href: '/bettafish', label: '🐟 Betta' },
+  { href: '/mirofish', label: '🦈 Miro' },
   { href: '/alerts', label: 'Alertas' },
   { href: '/search', label: 'Busca' },
 ];

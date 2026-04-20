@@ -8,7 +8,9 @@ export async function GET(
   const { id } = await params;
 
   try {
-    // Parallel fetch: article, entities, sentiment, impacts
+    // ═══════════════════════════════════════════════
+    // Phase 1: Core data (article + direct relations)
+    // ═══════════════════════════════════════════════
     const [articles, articleEntities, sentiments, impacts] = await Promise.all([
       supabaseQuery('cronos_articles', `id=eq.${id}&limit=1`),
       supabaseQuery(
@@ -24,81 +26,222 @@ export async function GET(
     }
 
     const article = articles[0];
-    const entities = articleEntities.map((ae: any) => ({
-      ...ae.cronos_entities,
-      relevance: ae.relevance,
-      context: ae.context,
-    })).filter((e: any) => e.id);
+    const entities = articleEntities
+      .map((ae: any) => ({
+        ...ae.cronos_entities,
+        relevance: ae.relevance,
+        context: ae.context,
+      }))
+      .filter((e: any) => e.id);
 
-    // Get tickers from entities
-    const tickers = entities
-      .filter((e: any) => e.type === 'ticker')
-      .map((e: any) => e.value);
+    const entityIds = entities.map((e: any) => e.id);
+    const tickers = entities.filter((e: any) => e.type === 'ticker').map((e: any) => e.value);
 
-    // If we have tickers, get recent prices and related articles
-    let prices: any[] = [];
-    let relatedArticles: any[] = [];
+    // ═══════════════════════════════════════════════
+    // Phase 2: Cross-source intelligence (ontology)
+    // ═══════════════════════════════════════════════
+    const [
+      prices,
+      relatedLinks,
+      correlations,
+      clusters,
+    ] = await Promise.all([
+      // Price history for tickers
+      tickers.length > 0
+        ? supabaseQuery(
+            'cronos_prices',
+            `ticker=in.(${tickers.join(',')})&select=ticker,date,close,volume&order=date.desc&limit=90`
+          )
+        : Promise.resolve([]),
 
-    if (tickers.length > 0) {
-      const tickerList = tickers.join(',');
-      [prices] = await Promise.all([
-        supabaseQuery(
-          'cronos_prices',
-          `ticker=in.(${tickerList})&select=ticker,date,close,volume&order=date.desc&limit=90`
-        ),
-      ]);
+      // Related articles through shared entities
+      entityIds.length > 0
+        ? supabaseQuery(
+            'cronos_article_entities',
+            `entity_id=in.(${entityIds.join(',')})&article_id=neq.${id}&select=article_id,entity_id,relevance,cronos_articles(id,title,source,published_at,url)&limit=50`
+          )
+        : Promise.resolve([]),
 
-      // Find related articles through shared entities
-      const entityIds = entities.map((e: any) => e.id).join(',');
-      if (entityIds) {
-        const relatedLinks = await supabaseQuery(
-          'cronos_article_entities',
-          `entity_id=in.(${entityIds})&article_id=neq.${id}&select=article_id,cronos_articles(id,title,source,published_at,url)&limit=10`
-        );
-        const seen = new Set<string>();
-        relatedArticles = relatedLinks
-          .filter((l: any) => l.cronos_articles && !seen.has(l.cronos_articles.id) && seen.add(l.cronos_articles.id))
-          .map((l: any) => l.cronos_articles)
-          .slice(0, 6);
+      // Cross-source correlations involving these entities
+      entityIds.length > 0
+        ? supabaseQuery(
+            'cronos_correlations',
+            `select=*&or=(entity=in.(${entities.map((e: any) => encodeURIComponent(e.canonical_name || e.value)).join(',')}))&order=signal_strength.desc&limit=20`
+          ).catch(() => [])
+        : Promise.resolve([]),
+
+      // Temporal clusters mentioning these entities
+      supabaseQuery(
+        'cronos_clusters',
+        `select=*&order=first_seen.desc&limit=20`
+      ).catch(() => []),
+    ]);
+
+    // ═══════════════════════════════════════════════
+    // Phase 3: Build rich ontology graph
+    // ═══════════════════════════════════════════════
+
+    // Deduplicate related articles and track shared entity count
+    const relatedMap = new Map<string, { article: any; sharedEntities: string[]; totalRelevance: number }>();
+    for (const link of relatedLinks) {
+      if (!link.cronos_articles) continue;
+      const rid = link.cronos_articles.id;
+      if (!relatedMap.has(rid)) {
+        relatedMap.set(rid, {
+          article: link.cronos_articles,
+          sharedEntities: [link.entity_id],
+          totalRelevance: link.relevance || 0.5,
+        });
+      } else {
+        const entry = relatedMap.get(rid)!;
+        entry.sharedEntities.push(link.entity_id);
+        entry.totalRelevance += link.relevance || 0.5;
       }
     }
 
-    // Build entity graph (nodes + edges for visualization)
-    const graphNodes = [
-      { id: `article-${id}`, type: 'article', label: article.title?.slice(0, 50), group: 'article' },
-      ...entities.map((e: any) => ({
-        id: `entity-${e.id}`,
-        type: e.type,
-        label: e.canonical_name || e.value,
-        group: e.type,
-        sector: e.sector,
-      })),
-    ];
+    const relatedArticles = Array.from(relatedMap.values())
+      .sort((a, b) => b.sharedEntities.length - a.sharedEntities.length || b.totalRelevance - a.totalRelevance)
+      .slice(0, 8)
+      .map((r) => ({
+        ...r.article,
+        sharedEntityCount: r.sharedEntities.length,
+        connectionStrength: r.totalRelevance,
+      }));
 
-    const graphEdges = entities.map((e: any) => ({
-      source: `article-${id}`,
-      target: `entity-${e.id}`,
-      weight: e.relevance || 0.5,
-      label: e.context || e.type,
-    }));
+    // ── Ontology Graph Nodes ──
+    const graphNodes: any[] = [];
+    const graphEdges: any[] = [];
+    const nodeSet = new Set<string>();
 
-    // Add ticker→sector edges
+    const addNode = (id: string, type: string, label: string, group: string, meta?: any) => {
+      if (nodeSet.has(id)) return;
+      nodeSet.add(id);
+      graphNodes.push({ id, type, label, group, ...meta });
+    };
+
+    // Central article
+    addNode(`article:${id}`, 'article', article.title?.slice(0, 60) || 'Artigo', 'article', {
+      mass: 3,
+      source: article.source,
+      published_at: article.published_at,
+    });
+
+    // Direct entities
     for (const e of entities) {
+      const nodeId = `entity:${e.id}`;
+      addNode(nodeId, e.type, e.canonical_name || e.value, e.type, {
+        sector: e.sector,
+        relevance: e.relevance,
+      });
+      graphEdges.push({
+        source: `article:${id}`,
+        target: nodeId,
+        weight: e.relevance || 0.5,
+        label: e.context || 'mencionado',
+        type: 'mentions',
+      });
+
+      // Sector → entity edge
       if (e.sector) {
-        const sectorId = `sector-${e.sector}`;
-        if (!graphNodes.find((n: any) => n.id === sectorId)) {
-          graphNodes.push({ id: sectorId, type: 'sector', label: e.sector, group: 'sector' });
-        }
+        const sectorId = `sector:${e.sector}`;
+        addNode(sectorId, 'sector', e.sector, 'sector', { mass: 1.5 });
         graphEdges.push({
-          source: `entity-${e.id}`,
+          source: nodeId,
           target: sectorId,
           weight: 0.3,
           label: 'setor',
+          type: 'belongs_to',
         });
       }
     }
 
-    // Impact chain: if we have impacts, build the transmission chain
+    // Related articles as graph nodes (creates cross-article connections)
+    for (const rel of relatedArticles.slice(0, 5)) {
+      const relNodeId = `article:${rel.id}`;
+      addNode(relNodeId, 'article', rel.title?.slice(0, 50) || '...', 'related_article', {
+        source: rel.source,
+        published_at: rel.published_at,
+        mass: 1,
+      });
+
+      // Connect related article to shared entities
+      const relEntityLinks = relatedLinks.filter(
+        (l: any) => l.cronos_articles?.id === rel.id
+      );
+      for (const link of relEntityLinks) {
+        const entityNodeId = `entity:${link.entity_id}`;
+        if (nodeSet.has(entityNodeId)) {
+          graphEdges.push({
+            source: relNodeId,
+            target: entityNodeId,
+            weight: (link.relevance || 0.3) * 0.7,
+            label: 'mencionado',
+            type: 'mentions',
+          });
+        }
+      }
+    }
+
+    // Correlations as edges between entities
+    for (const corr of correlations) {
+      const entityNode = graphNodes.find(
+        (n: any) =>
+          (n.type !== 'article' && n.type !== 'sector') &&
+          (n.label === corr.entity || n.label?.includes(corr.entity))
+      );
+      if (entityNode && corr.sources) {
+        // Add correlation metadata as an event node
+        const corrId = `correlation:${corr.id || corr.entity}`;
+        addNode(corrId, 'event', `${corr.entity} [${corr.source_count || '?'} fontes]`, 'event', {
+          signal_strength: corr.signal_strength,
+          sentiment_consensus: corr.avg_sentiment,
+        });
+        graphEdges.push({
+          source: entityNode.id,
+          target: corrId,
+          weight: corr.signal_strength || 0.5,
+          label: 'correlação',
+          type: 'correlation',
+        });
+      }
+    }
+
+    // Impact nodes (market effects)
+    for (const imp of impacts) {
+      const impactId = `impact:${imp.ticker}`;
+      addNode(impactId, 'impact', `${imp.ticker} ${imp.delta_1d != null ? (imp.delta_1d > 0 ? '+' : '') + imp.delta_1d.toFixed(1) + '%' : ''}`, 'impact', {
+        impact_score: imp.impact_score,
+        delta_1d: imp.delta_1d,
+        volume_anomaly: imp.volume_anomaly,
+      });
+
+      // Connect impact to its ticker entity (if exists)
+      const tickerEntity = graphNodes.find(
+        (n: any) => n.type === 'ticker' && n.label === imp.ticker
+      );
+      if (tickerEntity) {
+        graphEdges.push({
+          source: tickerEntity.id,
+          target: impactId,
+          weight: imp.impact_score || 0.5,
+          label: 'impacto de mercado',
+          type: 'market_impact',
+        });
+      } else {
+        // Direct link from article to impact
+        graphEdges.push({
+          source: `article:${id}`,
+          target: impactId,
+          weight: imp.impact_score || 0.5,
+          label: 'impacto',
+          type: 'market_impact',
+        });
+      }
+    }
+
+    // ═══════════════════════════════════════════════
+    // Phase 4: Transmission chain with causal flow
+    // ═══════════════════════════════════════════════
     const transmissionChain = impacts.map((imp: any) => ({
       ticker: imp.ticker,
       sentiment: sentiments[0]?.score ?? null,
@@ -107,6 +250,13 @@ export async function GET(
       volume_anomaly: imp.volume_anomaly,
     }));
 
+    // Temporal context — filter clusters that mention our entities
+    const entityNames = entities.map((e: any) => (e.canonical_name || e.value || '').toLowerCase());
+    const relevantClusters = clusters.filter((c: any) => {
+      const keywords = (c.keywords || []).map((k: string) => k.toLowerCase());
+      return entityNames.some((name: string) => keywords.some((k: string) => name.includes(k) || k.includes(name)));
+    }).slice(0, 5);
+
     return NextResponse.json({
       article,
       entities,
@@ -114,8 +264,17 @@ export async function GET(
       impacts,
       prices,
       relatedArticles,
+      correlations: correlations.slice(0, 10),
+      clusters: relevantClusters,
       graph: { nodes: graphNodes, edges: graphEdges },
       transmissionChain,
+      meta: {
+        entityCount: entities.length,
+        relatedCount: relatedArticles.length,
+        correlationCount: correlations.length,
+        graphNodeCount: graphNodes.length,
+        graphEdgeCount: graphEdges.length,
+      },
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
