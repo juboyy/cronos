@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 
 const BETTAFISH_URL = 'https://bettafish.216-238-124-248.nip.io';
 const STREAMLIT_URL = 'https://streamlit.216-238-124-248.nip.io';
+const PROXY_URL = '/api/engines/bettafish';
 
 const TABS = [
   { id: 'main', label: 'Painel Principal', url: BETTAFISH_URL, description: 'Interface central para análise multi-agente de sentimentos e tendências.' },
@@ -23,13 +24,10 @@ export default function BettaFishPage() {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const res = await fetch(BETTAFISH_URL, { signal: AbortSignal.timeout(5000) });
-        if (res.ok || res.status === 401 || res.status === 403) {
-          setStatus('online');
-        } else {
-          setStatus('offline');
-        }
-      } catch (e) {
+        const res = await fetch(PROXY_URL, { signal: AbortSignal.timeout(8000) });
+        const data = await res.json();
+        setStatus(data.backend === 'online' ? 'online' : 'offline');
+      } catch {
         setStatus('offline');
       }
     };
@@ -38,11 +36,12 @@ export default function BettaFishPage() {
 
   const startEngines = async () => {
     try {
-      await fetch(`${BETTAFISH_URL}/api/system/start`, { method: 'POST' });
-      alert('Comando de inicialização enviado.');
+      const res = await fetch(PROXY_URL, { method: 'POST' });
+      const data = await res.json();
+      alert(data.success ? 'Engines iniciados.' : 'Comando enviado.');
       setStatus('loading');
       setTimeout(() => window.location.reload(), 2000);
-    } catch (e) {
+    } catch {
       alert('Falha ao enviar comando de inicialização.');
     }
   };

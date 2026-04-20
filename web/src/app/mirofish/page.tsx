@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 
 const MIROFISH_FRONTEND = 'https://mirofish.216-238-124-248.nip.io';
 const MIROFISH_BACKEND = 'https://mirofish-api.216-238-124-248.nip.io';
+const PROXY_URL = '/api/engines/mirofish';
 
 interface EngineStatus {
   frontend: 'loading' | 'online' | 'offline';
@@ -17,18 +18,15 @@ export default function MiroFishPage() {
 
   const checkHealth = async () => {
     setEngine(prev => ({ ...prev, frontend: 'loading', backend: 'loading' }));
-    const [feOk, beData] = await Promise.all([
-      fetch(MIROFISH_FRONTEND, { mode: 'no-cors', signal: AbortSignal.timeout(5000) })
-        .then(() => true).catch(() => false),
-      fetch(`${MIROFISH_BACKEND}/health`, { signal: AbortSignal.timeout(5000) })
-        .then(r => r.ok ? r.json() : null).catch(() => null),
-    ]);
-    let simCount = 0;
-    try {
-      const simRes = await fetch(`${MIROFISH_BACKEND}/api/simulation/list`, { signal: AbortSignal.timeout(5000) });
-      if (simRes.ok) { const d = await simRes.json(); simCount = d.count ?? 0; }
-    } catch {}
-    setEngine({ frontend: feOk ? 'online' : 'offline', backend: beData ? 'online' : 'offline', simulations: simCount });
+    const feOk = await fetch(MIROFISH_FRONTEND, { mode: 'no-cors', signal: AbortSignal.timeout(5000) })
+      .then(() => true).catch(() => false);
+    const proxyData = await fetch(PROXY_URL, { signal: AbortSignal.timeout(8000) })
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+    setEngine({
+      frontend: feOk ? 'online' : 'offline',
+      backend: proxyData?.backend ?? 'offline',
+      simulations: proxyData?.simulations ?? 0,
+    });
   };
 
   useEffect(() => { checkHealth(); }, []);
