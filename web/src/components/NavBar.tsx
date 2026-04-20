@@ -7,6 +7,7 @@ const NAV = [
   { href: '/', label: 'Feed' },
   { href: '/intelligence', label: 'Intel' },
   { href: '/briefing', label: 'Briefing' },
+  { href: '/projects', label: 'Projetos' },
   { href: '/impact', label: 'Impacto' },
   { href: '/bettafish', label: '🐟 Betta' },
   { href: '/mirofish', label: '🦈 Miro' },

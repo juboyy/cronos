@@ -166,7 +166,7 @@ export default async function BriefingPage() {
       </div>
 
       {/* ━━ RISCOS / OPORTUNIDADES / NARRATIVAS ━━ */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2px' }}>
+      <div className="entity-two-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2px' }}>
         {/* Riscos Ativos */}
         <section style={{ padding: '24px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--signal-down)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>
@@ -276,7 +276,7 @@ export default async function BriefingPage() {
       </section>
 
       {/* ━━ TWO-COLUMN: Headlines + Alerts ━━ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr clamp(240px, 22vw, 320px)', gap: '40px', alignItems: 'start' }}>
+      <div className="entity-two-col" style={{ alignItems: 'start' }}>
 
         {/* Key Headlines */}
         <section>
