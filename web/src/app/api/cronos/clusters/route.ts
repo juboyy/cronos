@@ -7,6 +7,6 @@ export async function GET() {
       'select=*&order=created_at.desc&limit=20');
     return NextResponse.json(clusters);
   } catch (e: unknown) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

@@ -24,7 +24,7 @@ Título: {title}
 Responda em JSON com: { "bull": "...", "bear": "...", "verdict": "COMPRA|VENDA|NEUTRO", "conviction": "...", "risk_level": "BAIXO|MEDIO|ALTO" }`;
 
 // Normalize engine response (array of perspectives) to unified format
-function normalizeEngineResponse(data: unknown) {
+function normalizeEngineResponse(data: any) {
   const perspectives = data.perspectives || [];
   const synthesis = data.synthesis || {};
 
@@ -56,7 +56,7 @@ function normalizeEngineResponse(data: unknown) {
 }
 
 // Normalize Gemini response to same format
-function normalizeGeminiResponse(parsed: unknown) {
+function normalizeGeminiResponse(parsed: any) {
   return {
     perspectives: {
       bull: { analysis: parsed.bull || '', confidence: 0.7, stance: 'bullish', tickers: [] },

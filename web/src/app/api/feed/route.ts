@@ -15,6 +15,6 @@ export async function GET(req: NextRequest) {
     const articles = await supabaseQuery('cronos_articles', params);
     return NextResponse.json({ articles, page, limit });
   } catch (e: unknown) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

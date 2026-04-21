@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (e: unknown) {
     return NextResponse.json(
-      { error: 'internal_error', message: e.message, timestamp: new Date().toISOString() },
+      { error: 'internal_error', message: (e as Error).message, timestamp: new Date().toISOString() },
       { status: 500 }
     );
   }

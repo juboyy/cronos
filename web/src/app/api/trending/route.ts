@@ -31,10 +31,10 @@ export async function GET(req: NextRequest) {
     const trending = Object.values(counts)
       .sort((a, b) => b.count - a.count)
       .slice(0, limit)
-      .map(c => ({ ...c.entity, mention_count: c.count }));
+      .map(c => ({ ...(c.entity as any), mention_count: c.count }));
 
     return NextResponse.json({ trending });
   } catch (e: unknown) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

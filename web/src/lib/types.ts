@@ -82,7 +82,7 @@ export interface Impact {
   source_trust: number;
   window_data: Record<string, unknown>;
   created_at: string;
-  cronos_articles?: { title: string; source: string; published_at: string };
+  cronos_articles?: { title: string; source: string; published_at: string; url?: string };
 }
 
 export interface Simulation {

@@ -249,7 +249,7 @@ export default function ProjectsClient({ projects, links }: Props) {
                   stroke={isRelated ? 'var(--accent)' : 'var(--border)'}
                   strokeWidth={isRelated ? 2 : 1}
                   strokeOpacity={hoveredNode ? (isRelated ? 0.8 : 0.1) : 0.3}
-                  transition="stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s"
+                  style={{ transition: 'stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s' }}
                 />
               );
             })}

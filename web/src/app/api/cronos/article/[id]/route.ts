@@ -25,15 +25,15 @@ export async function GET(
 
     const article = articles[0];
     const entities = articleEntities
-      .map((ae: unknown) => ({
+      .map((ae: any) => ({
         ...ae.cronos_entities,
         relevance: ae.relevance,
         context: ae.context,
       }))
-      .filter((e: unknown) => e.id);
+      .filter((e: any) => e.id);
 
-    const entityIds = entities.map((e: unknown) => e.id);
-    const tickers = entities.filter((e: unknown) => e.type === 'ticker').map((e: unknown) => e.value);
+    const entityIds = entities.map((e: any) => e.id);
+    const tickers = entities.filter((e: any) => e.type === 'ticker').map((e: any) => e.value);
 
     const [
       prices,
@@ -61,7 +61,7 @@ export async function GET(
       entityIds.length > 0
         ? supabaseQuery(
             'cronos_correlations',
-            `select=*&or=(entity=in.(${entities.map((e: unknown) => encodeURIComponent(e.canonical_name || e.value)).join(',')}))&order=signal_strength.desc&limit=20`
+            `select=*&or=(entity=in.(${entities.map((e: any) => encodeURIComponent(e.canonical_name || e.value)).join(',')}))&order=signal_strength.desc&limit=20`
           ).catch(() => [])
         : Promise.resolve([]),
 
@@ -92,7 +92,7 @@ export async function GET(
     const relatedArticles = Array.from(relatedMap.values())
       .sort((a, b) => b.sharedEntities.length - a.sharedEntities.length || b.totalRelevance - a.totalRelevance)
       .slice(0, 8)
-      .map((r) => ({
+      .map((r: any) => ({
         ...r.article,
         sharedEntityCount: r.sharedEntities.length,
         connectionStrength: r.totalRelevance,
@@ -102,15 +102,16 @@ export async function GET(
     const graphEdges: unknown[] = [];
     const nodeSet = new Set<string>();
 
-    const addNode = (id: string, type: string, label: string, group: string, meta?: unknown) => {
+    const addNode = (id: string, type: string, label: string, group: string, meta?: any) => {
       if (nodeSet.has(id)) return;
       nodeSet.add(id);
-      graphNodes.push({ id, type, label, group, ...meta });
+      graphNodes.push({ id, type, label, group, ...(meta || {}) });
     };
 
     // Central article
     addNode(`article:${id}`, 'article', article.title?.slice(0, 60) || 'Artigo', 'article', {
       mass: 3,
+      ...(article as any),
       source: article.source,
       published_at: article.published_at,
     });
@@ -151,11 +152,12 @@ export async function GET(
         source: rel.source,
         published_at: rel.published_at,
         mass: 1,
+        ...(rel as any),
       });
 
       // Connect related article to shared entities
       const relEntityLinks = relatedLinks.filter(
-        (l: unknown) => l.cronos_articles?.id === rel.id
+        (l: any) => l.cronos_articles?.id === rel.id
       );
       for (const link of relEntityLinks) {
         const entityNodeId = `entity:${link.entity_id}`;
@@ -174,7 +176,7 @@ export async function GET(
     // Correlations as edges between entities
     for (const corr of correlations) {
       const entityNode = graphNodes.find(
-        (n: unknown) =>
+        (n: any) =>
           (n.type !== 'article' && n.type !== 'sector') &&
           (n.label === corr.entity || n.label?.includes(corr.entity))
       );
@@ -186,7 +188,7 @@ export async function GET(
           sentiment_consensus: corr.avg_sentiment,
         });
         graphEdges.push({
-          source: entityNode.id,
+          source: (entityNode as any).id,
           target: corrId,
           weight: corr.signal_strength || 0.5,
           label: 'correlação',
@@ -206,11 +208,11 @@ export async function GET(
 
       // Connect impact to its ticker entity (if exists)
       const tickerEntity = graphNodes.find(
-        (n: unknown) => n.type === 'ticker' && n.label === imp.ticker
+        (n: any) => n.type === 'ticker' && n.label === imp.ticker
       );
       if (tickerEntity) {
         graphEdges.push({
-          source: tickerEntity.id,
+          source: (tickerEntity as any).id,
           target: impactId,
           weight: imp.impact_score || 0.5,
           label: 'impacto de mercado',
@@ -228,7 +230,7 @@ export async function GET(
       }
     }
 
-    const transmissionChain = impacts.map((imp: unknown) => ({
+    const transmissionChain = impacts.map((imp: any) => ({
       ticker: imp.ticker,
       sentiment: sentiments[0]?.score ?? null,
       delta_1d: imp.delta_1d,
@@ -237,8 +239,8 @@ export async function GET(
     }));
 
     // Temporal context — filter clusters that mention our entities
-    const entityNames = entities.map((e: unknown) => (e.canonical_name || e.value || '').toLowerCase());
-    const relevantClusters = clusters.filter((c: unknown) => {
+    const entityNames = entities.map((e: any) => (e.canonical_name || e.value || '').toLowerCase());
+    const relevantClusters = clusters.filter((c: any) => {
       const keywords = (c.keywords || []).map((k: string) => k.toLowerCase());
       return entityNames.some((name: string) => keywords.some((k: string) => name.includes(k) || k.includes(name)));
     }).slice(0, 5);
@@ -263,6 +265,6 @@ export async function GET(
       },
     });
   } catch (e: unknown) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

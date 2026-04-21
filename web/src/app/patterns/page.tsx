@@ -1,3 +1,4 @@
+import { supabaseQuery } from '@/lib/supabase';
 import { Pattern } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';

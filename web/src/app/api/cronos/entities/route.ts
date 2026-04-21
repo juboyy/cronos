@@ -12,6 +12,6 @@ export async function GET(req: NextRequest) {
     );
     return NextResponse.json(entities);
   } catch (e: unknown) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

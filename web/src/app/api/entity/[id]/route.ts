@@ -1,3 +1,5 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { supabaseQuery } from '@/lib/supabase';
 import { Article, Entity, ArticleEntity, Sentiment, Impact, Price } from '@/lib/types';
 
 export async function GET(

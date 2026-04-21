@@ -4,7 +4,7 @@ import { supabaseQuery } from '@/lib/supabase';
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const offset = parseInt(searchParams.get('offset') || '0', 10);
-  const limit = Math.min(parseInt(searchParams.get('limit') || '25', 10), 100);
+  const limit = Math.min(parseInt(searchParams.get('limit') || '25', 10), 500);
 
   try {
     const articles = await supabaseQuery(
@@ -27,6 +27,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ articles, total, offset, limit });
   } catch (e: unknown) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }
