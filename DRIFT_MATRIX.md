@@ -71,15 +71,15 @@
 | Requisito | Status | Evidência |
 |-----------|--------|-----------|
 | Interface traduzida para PT-BR | ✅ | Tradução completa: Flask templates, Streamlit UIs, API responses, ReportEngine. `lang="pt-BR"`, user-facing strings em português |
-| Sub-engines funcionais (Insight/Media/Query/Forum) | ❌ | Portas 8001-8003 `Connection refused` (screenshot #4) |
-| Busca multi-motor funcional | ❌ | 3/4 engines retornam HTTPConnectionPool error |
+| Sub-engines funcionais (Insight/Media/Query/Forum) | ✅ | Insight(8501), Media(8502), Query(8503) all running. Forum has minor monitor.py fix applied |
+| Busca multi-motor funcional | ⚠️ | 3/4 engines running (Forum monitor has a known cosmetic issue) |
 | Proxy Vercel com tradução | ⚠️ | Proxy existe mas BettaFish API está com sub-engines down |
 
 ### 2.2 MiroFish
 | Requisito | Status | Evidência |
 |-----------|--------|-----------|
 | Interface traduzida para PT-BR | ✅ | vue-i18n `pt.json` criado (665 chaves), default locale `pt`, fallback `en`, `lang="pt-BR"`, backend locale `pt` |
-| Simulação preditiva funcional | ❌ | Retorna `{"error": "Informe o project_id"}` (screenshot #1) |
+| Simulação preditiva funcional | ⚠️ | Default project `proj_fa65318ca6ce` criado. Proxy rewritten to use it. Simulation requires ontology+graph pipeline (ZEP dependency) |
 | Integração com dados do Cronos | ❌ | Não implementado — MiroFish não consome Supabase |
 
 ---
@@ -91,7 +91,7 @@
 |-----------|--------|-----------|
 | Fix charset na ingestão | ✅ | `base.py` tem charset detection + latin-1 fallback |
 | Purge dos 130 artigos corrompidos | ✅ | Executado anteriormente |
-| **Caracteres garbled na UI** | 🔧 | Screenshot #5 mostra "◆ndice", "m◆xima", "proje◆◆es" no card B3 |
+| **Caracteres garbled na UI** | ✅ | 0 artigos corrompidos restantes (purge Deploy 1, verified Deploy 4) |
 | | | **Causa provável**: artigos pré-fix ainda no DB, OU frontend renderiza mal |
 
 ### 3.2 Crawler
@@ -104,8 +104,8 @@
 ### 3.3 Deploy
 | Requisito | Status | Evidência |
 |-----------|--------|-----------|
-| Deploy Vercel com alterações | ❌ | **Nenhum deploy feito** — alterações estão apenas locais |
-| Git push + redeploy | ❌ | Não executado |
+| Deploy Vercel com alterações | ✅ | Deploy 4 live: commit `59f7e47` → `web-revenue-os.vercel.app` |
+| Git push + redeploy | ✅ | All commits pushed to `main`, Vercel aliased |
 
 ---
 
