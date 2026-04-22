@@ -26,8 +26,15 @@ def _query(table, params=''):
         f'{SUPABASE_URL}/rest/v1/{table}?{params}',
         headers=_headers(),
     )
-    resp = urllib.request.urlopen(req, timeout=15)
-    return json.loads(resp.read())
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        print(f'  [WARN] _query {table} HTTP {e.code}: {e.reason}')
+        return []
+    except Exception as e:
+        print(f'  [WARN] _query {table} error: {e}')
+        return []
 
 
 def _upsert(table, data):

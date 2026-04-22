@@ -196,10 +196,10 @@ export default function BriefingPage() {
         const [resArticles, resMacro, resImpacts, resSentiment, resAlerts, resPrices] = await Promise.all([
           fetch('/api/cronos/articles?limit=10').then(r => r.json()),
           fetch('/api/cronos/macro').then(r => r.json()),
-          fetch('/api/cronos/impacts').then(r => r.json()),
+          fetch('/api/cronos/impact').then(r => r.json()),
           fetch('/api/cronos/sentiment').then(r => r.json()),
           fetch('/api/cronos/alerts').then(r => r.json()),
-          fetch('/api/cronos/prices').then(r => r.json())
+          fetch('/api/cronos/prices?ticker=PETR4').then(r => r.ok ? r.json() : [])
         ]);
 
         // Aggregate sentiment

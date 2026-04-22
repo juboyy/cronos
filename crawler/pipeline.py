@@ -68,73 +68,73 @@ def run_pipeline(sources=None, dry_run=False, run_impact=False, run_patterns=Fal
         for article in articles:
             if new_this_source >= MAX_NEW_PER_SOURCE:
                 break
-                if not dry_run and check_article_exists(article['url']):
-                    continue
+            if not dry_run and check_article_exists(article['url']):
+                continue
 
-                stats['new'] += 1
-                new_this_source += 1
+            stats['new'] += 1
+            new_this_source += 1
 
-                if dry_run:
-                    print(f'  [DRY] {article["title"][:80]}')
-                    continue
+            if dry_run:
+                print(f'  [DRY] {article["title"][:80]}')
+                continue
 
-                article_id = insert_article(article)
-                if not article_id:
-                    stats['errors'] += 1
-                    continue
+            article_id = insert_article(article)
+            if not article_id:
+                stats['errors'] += 1
+                continue
 
-                entities = extract_entities(
-                    article['title'],
-                    article.get('summary'),
-                    article.get('content'),
-                )
+            entities = extract_entities(
+                article['title'],
+                article.get('summary'),
+                article.get('content'),
+            )
 
-                for ent in entities:
-                    entity_data = {
-                        'type': ent['type'],
-                        'value': ent['value'],
-                    }
-                    if ent.get('canonical_name'):
-                        entity_data['canonical_name'] = ent['canonical_name']
-                    if ent.get('sector'):
-                        entity_data['sector'] = ent['sector']
+            for ent in entities:
+                entity_data = {
+                    'type': ent['type'],
+                    'value': ent['value'],
+                }
+                if ent.get('canonical_name'):
+                    entity_data['canonical_name'] = ent['canonical_name']
+                if ent.get('sector'):
+                    entity_data['sector'] = ent['sector']
 
-                    entity_id = get_entity_id(ent['type'], ent['value'])
-                    if not entity_id:
-                        entity_id = insert_entity(entity_data)
+                entity_id = get_entity_id(ent['type'], ent['value'])
+                if not entity_id:
+                    entity_id = insert_entity(entity_data)
 
-                    if entity_id:
-                        link_article_entity(
-                            article_id, entity_id,
-                            relevance=ent.get('relevance', 0.5),
-                            context=ent.get('context'),
-                        )
-                        stats['entities'] += 1
-
-                sentiment = analyze_sentiment(article['title'], article.get('summary'))
-                if sentiment:
-                    insert_sentiment(
-                        article_id,
-                        score=sentiment['score'],
-                        label=sentiment['label'],
-                        confidence=sentiment['confidence'],
+                if entity_id:
+                    link_article_entity(
+                        article_id, entity_id,
+                        relevance=ent.get('relevance', 0.5),
+                        context=ent.get('context'),
                     )
-                    stats['sentiment'] += 1
-                    time.sleep(0.5)
+                    stats['entities'] += 1
 
-                    if abs(sentiment['score']) > 0.4:
-                        from alert_engine import _insert as _notif_insert
-                        sev = 'warning' if sentiment['score'] < -0.3 else 'info'
-                        direction = '📉 Negativo' if sentiment['score'] < 0 else '📈 Positivo'
-                        tickers = [e['value'] for e in entities if e.get('type') == 'ticker']
-                        _notif_insert('cronos_notifications', {
-                            'type': 'sentiment',
-                            'title': f'{direction}: {article["title"][:60]}',
-                            'body': f'Score: {sentiment["score"]:.3f} | Fonte: {article.get("source", "?")}',
-                            'severity': sev,
-                            'ticker': tickers[0] if tickers else None,
-                            'article_id': article_id,
-                        })
+            sentiment = analyze_sentiment(article['title'], article.get('summary'))
+            if sentiment:
+                insert_sentiment(
+                    article_id,
+                    score=sentiment['score'],
+                    label=sentiment['label'],
+                    confidence=sentiment['confidence'],
+                )
+                stats['sentiment'] += 1
+                time.sleep(0.5)
+
+                if abs(sentiment['score']) > 0.4:
+                    from alert_engine import _insert as _notif_insert
+                    sev = 'warning' if sentiment['score'] < -0.3 else 'info'
+                    direction = '📉 Negativo' if sentiment['score'] < 0 else '📈 Positivo'
+                    tickers = [e['value'] for e in entities if e.get('type') == 'ticker']
+                    _notif_insert('cronos_notifications', {
+                        'type': 'sentiment',
+                        'title': f'{direction}: {article["title"][:60]}',
+                        'body': f'Score: {sentiment["score"]:.3f} | Fonte: {article.get("source", "?")}',
+                        'severity': sev,
+                        'ticker': tickers[0] if tickers else None,
+                        'article_id': article_id,
+                    })
 
     print(f'\n{"=" * 50}')
     print(f'Pipeline complete!')
