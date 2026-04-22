@@ -193,17 +193,18 @@ export default function BriefingPage() {
   useEffect(() => {
     async function fetchData() {
       try {
+        const safeFetch = (url: string) => fetch(url).then(r => r.ok ? r.json() : []).catch(() => []);
         const [resArticles, resMacro, resImpacts, resSentiment, resAlerts, resPrices] = await Promise.all([
-          fetch('/api/cronos/articles?limit=10').then(r => r.json()),
-          fetch('/api/cronos/macro').then(r => r.json()),
-          fetch('/api/cronos/impact').then(r => r.json()),
-          fetch('/api/cronos/sentiment').then(r => r.json()),
-          fetch('/api/cronos/alerts').then(r => r.json()),
-          fetch('/api/cronos/prices?ticker=PETR4').then(r => r.ok ? r.json() : [])
+          safeFetch('/api/cronos/articles?limit=10'),
+          safeFetch('/api/cronos/macro'),
+          safeFetch('/api/cronos/impact'),
+          safeFetch('/api/cronos/sentiment'),
+          safeFetch('/api/cronos/alerts'),
+          safeFetch('/api/cronos/prices?ticker=PETR4')
         ]);
 
         // Aggregate sentiment
-        const scores = resSentiment.map((s: Sentiment) => s.score).filter(Boolean);
+        const scores = resSentiment.map((s: Sentiment) => s.score).filter((s: number) => s !== null && s !== undefined);
         const avgSent = scores.length > 0 ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length : 0;
         const posPct = scores.length > 0 ? Math.round(scores.filter((s: number) => s > 0.05).length / scores.length * 100) : 0;
         const negPct = scores.length > 0 ? Math.round(scores.filter((s: number) => s < -0.05).length / scores.length * 100) : 0;
