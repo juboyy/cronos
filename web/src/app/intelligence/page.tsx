@@ -1,6 +1,5 @@
 'use client';
 
-import { supabaseQuery } from '@/lib/supabase';
 import { IntelligenceDashboard } from '@/components/IntelligenceDashboard';
 import { useState, useEffect } from 'react';
 
@@ -8,12 +7,18 @@ export const dynamic = 'force-dynamic';
 
 async function getInitialData() {
   try {
+    const safeFetch = (url: string) =>
+      fetch(url).then(r => r.ok ? r.json() : []).catch(() => []);
     const [correlations, clusters, briefings] = await Promise.all([
-      supabaseQuery('cronos_correlations', 'select=*&order=signal_strength.desc&limit=15').catch(() => []),
-      supabaseQuery('cronos_clusters', 'select=*&order=created_at.desc&limit=15').catch(() => []),
-      supabaseQuery('cronos_briefings', 'select=*&order=date.desc&limit=3').catch(() => []),
+      safeFetch('/api/cronos/correlations'),
+      safeFetch('/api/cronos/clusters'),
+      safeFetch('/api/cronos/briefing'),
     ]);
-    return { correlations, clusters, briefings };
+    return {
+      correlations: Array.isArray(correlations) ? correlations : [],
+      clusters: Array.isArray(clusters) ? clusters : [],
+      briefings: Array.isArray(briefings) ? briefings : [],
+    };
   } catch (e) {
     return { correlations: [], clusters: [], briefings: [] };
   }

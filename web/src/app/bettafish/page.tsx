@@ -31,8 +31,8 @@ export default function BettaFishPage() {
   const checkHealth = useCallback(async () => {
     setEngine(prev => ({ ...prev, backend: 'loading' }));
     const [proxyData, statusData] = await Promise.all([
-      fetch(PROXY_URL, { signal: AbortSignal.timeout(8000) }).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch('/api/engines/bettafish/status', { signal: AbortSignal.timeout(8000) }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(PROXY_URL, { signal: AbortSignal.timeout(5000) }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/engines/bettafish/status', { signal: AbortSignal.timeout(5000) }).then(r => r.ok ? r.json() : null).catch(() => null),
     ]);
     setEngine({
       backend: proxyData?.backend ?? 'offline',

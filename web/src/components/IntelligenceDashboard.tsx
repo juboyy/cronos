@@ -282,7 +282,16 @@ export function IntelligenceDashboard({ correlations, clusters, briefings, searc
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         
         {tab === 'correlations' && correlations.map(c => {
-          const sources = parseJSON(c.sources);
+          const rawSources = parseJSON(c.sources);
+          // Normalize sources: could be Record<string, number> OR array of {source, count} objects
+          const sources: Record<string, number> = Array.isArray(rawSources)
+            ? rawSources.reduce((acc: Record<string, number>, item: any) => {
+                if (item && typeof item === 'object' && 'source' in item) {
+                  acc[item.source] = item.count ?? 1;
+                }
+                return acc;
+              }, {})
+            : (rawSources && typeof rawSources === 'object' ? rawSources as Record<string, number> : {});
           const consensusColor = `hsl(${c.sentiment_consensus * 120} 70% 45%)`;
           return (
             <div key={c.id} style={{ 
@@ -331,7 +340,15 @@ export function IntelligenceDashboard({ correlations, clusters, briefings, searc
 
         {tab === 'clusters' && clusters.map(c => {
           const typeColors: any = { burst: 'var(--signal-down)', emerging: 'var(--signal-up)', sustained: 'var(--accent)' };
-          const keywords = parseJSON(c.keywords);
+          const keywords: string[] = (() => {
+            const k = parseJSON(c.keywords);
+            return Array.isArray(k) ? k : [];
+          })();
+          const clusterSources: string[] = (() => {
+            const s = parseJSON(c.sources);
+            if (Array.isArray(s)) return s.map((item: any) => typeof item === 'string' ? item : (item?.source || String(item)));
+            return [];
+          })();
           return (
             <div key={c.id} style={{ 
               background: 'hsl(225 12% 6%)', border: '1px solid hsl(225 10% 10%)', borderRadius: '12px', padding: '16px',
@@ -350,7 +367,7 @@ export function IntelligenceDashboard({ correlations, clusters, briefings, searc
               </div>
 
               <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '16px' }}>
-                "{c.article_count} artigos sobre {c.title} de {c.sources.slice(0,2).join(', ')}... em {Math.round(c.window_minutes/60)}h — sentimento {c.dominant_sentiment}"
+                "{c.article_count} artigos sobre {c.title} de {clusterSources.slice(0,2).join(', ')}... em {Math.round(c.window_minutes/60)}h — sentimento {c.dominant_sentiment}"
               </div>
 
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
@@ -375,8 +392,17 @@ export function IntelligenceDashboard({ correlations, clusters, briefings, searc
         })}
 
         {tab === 'briefings' && briefings.map(b => {
-          const topEnts = parseJSON(b.top_entities);
-          const breakdown = parseJSON(b.source_breakdown);
+          const topEnts: any[] = (() => { const v = parseJSON(b.top_entities); return Array.isArray(v) ? v : []; })();
+          const breakdown: Record<string, any> = (() => {
+            const v = parseJSON(b.source_breakdown);
+            if (Array.isArray(v)) {
+              return v.reduce((acc: Record<string, any>, item: any) => {
+                if (item && typeof item === 'object' && 'source' in item) acc[item.source] = item.count ?? 1;
+                return acc;
+              }, {});
+            }
+            return v && typeof v === 'object' ? v : {};
+          })();
           return (
             <div key={b.id} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               {/* Executive Summary Card */}

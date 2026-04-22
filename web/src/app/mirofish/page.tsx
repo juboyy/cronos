@@ -32,7 +32,7 @@ export default function MiroFishPage() {
 
   const checkHealth = useCallback(async () => {
     setEngine(prev => ({ ...prev, backend: 'loading' }));
-    const data = await fetch(PROXY_URL, { signal: AbortSignal.timeout(8000) })
+    const data = await fetch(PROXY_URL, { signal: AbortSignal.timeout(5000) })
       .then(r => r.ok ? r.json() : null).catch(() => null);
     setEngine({
       backend: data?.backend ?? 'offline',

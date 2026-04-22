@@ -94,9 +94,11 @@ export default function ImpactPage() {
       safeFetch('/api/cronos/prices?ticker=PETR4'),
       safeFetch('/api/cronos/entities'),
     ]).then(([imp, pr, ent]) => {
-      setImpacts(imp);
-      setPrices(pr);
-      setEntities(ent);
+      setImpacts(Array.isArray(imp) ? imp : []);
+      setPrices(Array.isArray(pr) ? pr : []);
+      setEntities(Array.isArray(ent) ? ent : (ent?.entities || []));
+      setLoading(false);
+    }).catch(() => {
       setLoading(false);
     });
   }, []);

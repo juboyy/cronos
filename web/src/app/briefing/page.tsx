@@ -194,7 +194,7 @@ export default function BriefingPage() {
     async function fetchData() {
       try {
         const safeFetch = (url: string) => fetch(url).then(r => r.ok ? r.json() : []).catch(() => []);
-        const [resArticles, resMacro, resImpacts, resSentiment, resAlerts, resPrices] = await Promise.all([
+        const [rawArticles, resMacro, resImpacts, resSentiment, resAlerts, resPrices] = await Promise.all([
           safeFetch('/api/cronos/articles?limit=10'),
           safeFetch('/api/cronos/macro'),
           safeFetch('/api/cronos/impact'),
@@ -203,32 +203,42 @@ export default function BriefingPage() {
           safeFetch('/api/cronos/prices?ticker=PETR4')
         ]);
 
+        // Unwrap articles — /api/cronos/articles returns { articles, total, offset, limit }
+        const resArticles: Article[] = Array.isArray(rawArticles) ? rawArticles : (rawArticles?.articles || []);
+
         // Aggregate sentiment
-        const scores = resSentiment.map((s: Sentiment) => s.score).filter((s: number) => s !== null && s !== undefined);
+        const resSentimentArr: Sentiment[] = Array.isArray(resSentiment) ? resSentiment : [];
+        const scores = resSentimentArr.map((s: Sentiment) => s.score).filter((s: number) => s !== null && s !== undefined);
         const avgSent = scores.length > 0 ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length : 0;
         const posPct = scores.length > 0 ? Math.round(scores.filter((s: number) => s > 0.05).length / scores.length * 100) : 0;
         const negPct = scores.length > 0 ? Math.round(scores.filter((s: number) => s < -0.05).length / scores.length * 100) : 0;
 
+        // Ensure arrays before forEach/map
+        const resMacroArr: Macro[] = Array.isArray(resMacro) ? resMacro : [];
+        const resImpactsArr: Impact[] = Array.isArray(resImpacts) ? resImpacts : [];
+        const resAlertsArr: Alert[] = Array.isArray(resAlerts) ? resAlerts : [];
+        const resPricesArr: Price[] = Array.isArray(resPrices) ? resPrices : [];
+
         // Macro with history for sparklines
         const macroHistory: Record<string, number[]> = {};
         const macroMap: Record<string, Macro & { history: number[] }> = {};
-        resMacro.forEach((m: Macro) => {
+        resMacroArr.forEach((m: Macro) => {
           if (!macroHistory[m.indicator]) macroHistory[m.indicator] = [];
           macroHistory[m.indicator].push(m.value);
         });
         Object.keys(macroHistory).forEach(k => {
-          const latest = resMacro.find((m: Macro) => m.indicator === k);
+          const latest = resMacroArr.find((m: Macro) => m.indicator === k);
           macroMap[k] = { ...latest, history: macroHistory[k].slice(0, 7).reverse() };
         });
 
         // Price movers with 10-pt charts
         const priceByTicker: Record<string, number[]> = {};
-        resPrices.forEach((p: Price) => {
+        resPricesArr.forEach((p: Price) => {
           if (!priceByTicker[p.ticker]) priceByTicker[p.ticker] = [];
           priceByTicker[p.ticker].push(p.close);
         });
 
-        const movers = resImpacts
+        const movers = resImpactsArr
           .slice(0, 8)
           .map((imp: Impact) => ({
             ...imp,
@@ -236,12 +246,12 @@ export default function BriefingPage() {
           }));
 
         // Riscos & Oportunidades
-        const riscos = resImpacts.filter((imp: Impact) => (imp.delta_1d !== null && imp.delta_1d < -1) || imp.volume_anomaly);
-        const oportunidades = resImpacts.filter((imp: Impact) => imp.delta_1d !== null && imp.delta_1d > 1);
+        const riscos = resImpactsArr.filter((imp: Impact) => (imp.delta_1d !== null && imp.delta_1d < -1) || imp.volume_anomaly);
+        const oportunidades = resImpactsArr.filter((imp: Impact) => imp.delta_1d !== null && imp.delta_1d > 1);
 
         // Narrativas
         const entityMentions: Record<string, { name: string; count: number; sentSum: number }> = {};
-        const tickers = resImpacts.map((imp: Impact) => imp.ticker);
+        const tickers = resImpactsArr.map((imp: Impact) => imp.ticker);
         resArticles.forEach((art: Article) => {
           const title = (art.title || '').toUpperCase();
           const score = art.cronos_sentiment?.[0]?.score ?? 0;
@@ -260,8 +270,9 @@ export default function BriefingPage() {
 
         // Source Health Matrix
         const srcMap: Record<string, { count: number; latest: string }> = {};
-        const allArticlesForHealth = await safeFetch('/api/cronos/articles?limit=500');
-        (allArticlesForHealth.articles || allArticlesForHealth || []).forEach((a: Article) => {
+        const rawHealth = await safeFetch('/api/cronos/articles?limit=500');
+        const allArticlesForHealth: Article[] = Array.isArray(rawHealth) ? rawHealth : (rawHealth?.articles || []);
+        allArticlesForHealth.forEach((a: Article) => {
           const src = a.source || 'unknown';
           if (!srcMap[src]) srcMap[src] = { count: 0, latest: '' };
           srcMap[src].count++;
@@ -279,12 +290,12 @@ export default function BriefingPage() {
         setData({
           articles: resArticles,
           macroMap,
-          impacts: resImpacts,
+          impacts: resImpactsArr,
           avgSent,
           posPct,
           negPct,
           sentimentCount: scores.length,
-          alerts: resAlerts,
+          alerts: resAlertsArr,
           movers,
           riscos,
           oportunidades,
