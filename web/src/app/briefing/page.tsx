@@ -171,6 +171,7 @@ export default function BriefingPage() {
     riscos: Impact[];
     oportunidades: Impact[];
     narrativas: { name: string; count: number; avgSent: number }[];
+    sourceHealth: { source: string; count: number; latest: string; health: number }[];
     loading: boolean;
   }>({
     articles: [],
@@ -185,6 +186,7 @@ export default function BriefingPage() {
     riscos: [],
     oportunidades: [],
     narrativas: [],
+    sourceHealth: [] as { source: string; count: number; latest: string; health: number }[],
     loading: true,
   });
 
@@ -255,6 +257,24 @@ export default function BriefingPage() {
           .slice(0, 3)
           .map(n => ({ name: n.name, count: n.count, avgSent: n.sentSum / (n.count || 1) }));
 
+        // Source Health Matrix
+        const srcMap: Record<string, { count: number; latest: string }> = {};
+        const allArticlesForHealth = await fetch('/api/cronos/articles?limit=500').then(r => r.json());
+        (allArticlesForHealth.articles || allArticlesForHealth || []).forEach((a: Article) => {
+          const src = a.source || 'unknown';
+          if (!srcMap[src]) srcMap[src] = { count: 0, latest: '' };
+          srcMap[src].count++;
+          if ((a.published_at || '') > srcMap[src].latest) srcMap[src].latest = a.published_at || '';
+        });
+        const now24h = new Date(Date.now() - 86400000).toISOString();
+        const sourceHealth = Object.entries(srcMap)
+          .map(([source, { count, latest }]) => {
+            const hoursSinceLatest = latest ? (Date.now() - new Date(latest).getTime()) / 3600000 : 999;
+            const health = hoursSinceLatest < 6 ? 1 : hoursSinceLatest < 24 ? 0.7 : hoursSinceLatest < 72 ? 0.4 : 0.1;
+            return { source, count, latest, health };
+          })
+          .sort((a, b) => b.count - a.count);
+
         setData({
           articles: resArticles,
           macroMap,
@@ -268,6 +288,7 @@ export default function BriefingPage() {
           riscos,
           oportunidades,
           narrativas,
+          sourceHealth,
           loading: false
         });
       } catch (error) {
@@ -536,6 +557,34 @@ export default function BriefingPage() {
                   <div className="font-mono text-[10px] text-[var(--text-muted)] uppercase">Escaneando Perímetros...</div>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Source Health Matrix */}
+          <div>
+            <div className="font-mono text-[10px] text-[var(--text-tertiary)] uppercase tracking-[0.2em] mb-6">
+              Source Health
+            </div>
+            <div className="space-y-3">
+              {data.sourceHealth.map((src, i) => {
+                const healthColor = src.health >= 0.7 ? 'var(--signal-up)' : src.health >= 0.4 ? 'var(--signal-neutral)' : 'var(--signal-down)';
+                const hoursSince = src.latest ? Math.round((Date.now() - new Date(src.latest).getTime()) / 3600000) : 999;
+                const freshLabel = hoursSince < 1 ? 'agora' : hoursSince < 24 ? `${hoursSince}h` : `${Math.round(hoursSince / 24)}d`;
+                return (
+                  <div key={i} className="flex items-center gap-3 font-mono text-[11px]">
+                    <span
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ background: healthColor }}
+                    />
+                    <span className="text-[var(--text-primary)] uppercase w-24 truncate text-[10px] tracking-wider">{src.source}</span>
+                    <div className="flex-1 h-1 bg-[var(--border-subtle)] rounded-full overflow-hidden">
+                      <div className="h-full transition-all duration-700" style={{ width: `${src.health * 100}%`, background: healthColor }} />
+                    </div>
+                    <span className="text-[var(--text-muted)] text-[9px] w-12 text-right">{src.count}</span>
+                    <span className="text-[var(--text-muted)] text-[9px] w-10 text-right">{freshLabel}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
