@@ -3,7 +3,7 @@ import { supabaseQuery } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const limit = searchParams.get('limit') || '20';
+  const limit = searchParams.get('limit') || '100';
 
   try {
     const macro = await supabaseQuery(
