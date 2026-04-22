@@ -1,101 +1,133 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-const MIROFISH_BACKEND = 'https://mirofish-api.216-238-124-248.nip.io';
-const DEFAULT_PROJECT_ID = 'proj_fa65318ca6ce';
+const MIROFISH_API = process.env.MIROFISH_API_URL || 'https://mirofish-api.216-238-124-248.nip.io';
 
-export const dynamic = 'force-dynamic';
+async function mirofish(path: string, options: RequestInit = {}) {
+  const res = await fetch(`${MIROFISH_API}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+  
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`MiroFish error ${res.status}: ${text}`);
+  }
+  
+  return res.json();
+}
 
-export async function POST(req: Request) {
+// GET: list simulations, get status, get profiles
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const action = searchParams.get('action') || 'list';
+  const simId = searchParams.get('id');
+  const projectId = searchParams.get('project_id') || 'proj_cronos_memgraph';
+  
   try {
-    const body = await req.json();
-    const { topic, context, project_id } = body;
-
-    const projectId = project_id || DEFAULT_PROJECT_ID;
-
-    // Step 1: Get or verify project exists
-    const projRes = await fetch(`${MIROFISH_BACKEND}/api/graph/project/${projectId}`, {
-      signal: AbortSignal.timeout(10000),
-    }).catch(() => null);
-
-    const projectExists = projRes?.ok;
-
-    if (!projectExists) {
-      return NextResponse.json({
-        result: `Projeto ${projectId} não encontrado. Crie um projeto primeiro via a interface MiroFish.`,
-        error: true,
-      });
+    switch (action) {
+      case 'list': {
+        const data = await mirofish(`/api/simulation/list?project_id=${projectId}`);
+        return NextResponse.json(data);
+      }
+      case 'status': {
+        if (!simId) return NextResponse.json({ error: 'id required' }, { status: 400 });
+        const data = await mirofish(`/api/simulation/${simId}`);
+        return NextResponse.json(data);
+      }
+      case 'profiles': {
+        if (!simId) return NextResponse.json({ error: 'id required' }, { status: 400 });
+        const data = await mirofish(`/api/simulation/${simId}/profiles`);
+        return NextResponse.json(data);
+      }
+      case 'config': {
+        if (!simId) return NextResponse.json({ error: 'id required' }, { status: 400 });
+        const data = await mirofish(`/api/simulation/${simId}/config`);
+        return NextResponse.json(data);
+      }
+      case 'run-status': {
+        if (!simId) return NextResponse.json({ error: 'id required' }, { status: 400 });
+        const data = await mirofish(`/api/simulation/${simId}/run-status`);
+        return NextResponse.json(data);
+      }
+      case 'entities': {
+        // Read entities from Memgraph via the graph API
+        const graphId = searchParams.get('graph_id') || 'cronos_memgraph';
+        const data = await mirofish(`/api/simulation/entities/${graphId}`);
+        return NextResponse.json(data);
+      }
+      default:
+        return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
     }
+  } catch (e: unknown) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
+}
 
-    // Step 2: Try ontology generation with topic as input text
-    const ontologyRes = await fetch(`${MIROFISH_BACKEND}/api/graph/ontology/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        project_id: projectId,
-        text: context || topic,
-        description: topic,
-      }),
-      signal: AbortSignal.timeout(60000),
-    }).catch(() => null);
-
-    const ontologyData = ontologyRes?.ok
-      ? await ontologyRes.json().catch(() => null)
-      : null;
-
-    // Step 3: Trigger graph build
-    const graphRes = await fetch(`${MIROFISH_BACKEND}/api/graph/build`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: projectId }),
-      signal: AbortSignal.timeout(30000),
-    }).catch(() => null);
-
-    const graphData = graphRes?.ok
-      ? await graphRes.json().catch(() => null)
-      : null;
-
-    // Step 4: If graph is ready, try simulation
-    let simData = null;
-    if (graphData?.success && graphData?.data?.graph_id) {
-      const simRes = await fetch(`${MIROFISH_BACKEND}/api/simulation/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_id: projectId,
-          name: topic,
-          description: context || topic,
-        }),
-        signal: AbortSignal.timeout(30000),
-      }).catch(() => null);
-
-      simData = simRes?.ok
-        ? await simRes.json().catch(() => null)
-        : null;
+// POST: create, prepare, start, stop simulation
+export async function POST(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const action = searchParams.get('action') || 'create';
+  
+  try {
+    const body = await req.json().catch(() => ({}));
+    
+    switch (action) {
+      case 'create': {
+        const data = await mirofish('/api/simulation/create', {
+          method: 'POST',
+          body: JSON.stringify({
+            project_id: body.project_id || 'proj_cronos_memgraph',
+            graph_id: body.graph_id || 'cronos_memgraph',
+            enable_twitter: body.enable_twitter ?? true,
+            enable_reddit: body.enable_reddit ?? true,
+          }),
+        });
+        return NextResponse.json(data);
+      }
+      case 'prepare': {
+        const data = await mirofish('/api/simulation/prepare', {
+          method: 'POST',
+          body: JSON.stringify({
+            simulation_id: body.simulation_id,
+            simulation_requirement: body.requirement || body.simulation_requirement || '',
+            document_text: body.document_text || body.context || '',
+            use_llm_for_profiles: body.use_llm ?? true,
+            parallel_profile_count: body.parallel || 5,
+          }),
+        });
+        return NextResponse.json(data);
+      }
+      case 'prepare-status': {
+        const data = await mirofish('/api/simulation/prepare/status', {
+          method: 'POST',
+          body: JSON.stringify({ simulation_id: body.simulation_id }),
+        });
+        return NextResponse.json(data);
+      }
+      case 'start': {
+        const data = await mirofish('/api/simulation/start', {
+          method: 'POST',
+          body: JSON.stringify({
+            simulation_id: body.simulation_id,
+            max_rounds: body.max_rounds || 10,
+          }),
+        });
+        return NextResponse.json(data);
+      }
+      case 'stop': {
+        const data = await mirofish('/api/simulation/stop', {
+          method: 'POST',
+          body: JSON.stringify({ simulation_id: body.simulation_id }),
+        });
+        return NextResponse.json(data);
+      }
+      default:
+        return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
     }
-
-    return NextResponse.json({
-      result: [
-        `📊 Projeto: ${topic}`,
-        `🆔 ID: ${projectId}`,
-        '',
-        ontologyData?.success
-          ? `✅ Ontologia: ${ontologyData.data?.entity_count || '?'} entidades detectadas`
-          : '⏳ Ontologia: geração em andamento...',
-        '',
-        graphData?.success
-          ? `✅ Grafo: construído (${graphData.data?.task_id || 'OK'})`
-          : '⏳ Grafo: construção em andamento...',
-        '',
-        simData?.success
-          ? `✅ Simulação: criada (${simData.data?.simulation_id || 'OK'})`
-          : '📋 Simulação: aguardando grafo completo',
-      ].join('\n'),
-      project_id: projectId,
-    });
-  } catch (e) {
-    return NextResponse.json({
-      result: `Erro: ${e instanceof Error ? e.message : 'Falha na conexão com MiroFish'}`,
-      error: true,
-    });
+  } catch (e: unknown) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

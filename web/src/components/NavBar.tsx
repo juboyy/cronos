@@ -11,7 +11,6 @@ const NAV = [
   { href: '/bettafish', label: '🐟 Betta' },
   { href: '/mirofish', label: '🦈 Miro' },
   { href: '/alerts', label: 'Alertas' },
-  { href: '/search', label: 'Busca' },
 ];
 
 export function NavBar() {

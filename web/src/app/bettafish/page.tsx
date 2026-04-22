@@ -25,7 +25,8 @@ export default function BettaFishPage() {
   const [searchResults, setSearchResults] = useState<Record<string, SearchResult> | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [forumLog, setForumLog] = useState<string[]>([]);
-  const [graphData, setGraphData] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [graphData, setGraphData] = useState<any>(null);
 
   const checkHealth = useCallback(async () => {
     setEngine(prev => ({ ...prev, backend: 'loading' }));
@@ -69,10 +70,10 @@ export default function BettaFishPage() {
   };
 
   const loadGraph = async () => {
-    const res = await fetch('/api/engines/bettafish/graph').catch(() => null);
+    const res = await fetch('/api/engines/bettafish/graph?action=summary').catch(() => null);
     if (res?.ok) {
       const data = await res.json();
-      setGraphData(data.success ? JSON.stringify(data, null, 2) : data.message ?? 'Sem dados de grafo');
+      setGraphData(data.success ? data : null);
     }
   };
 
@@ -191,12 +192,38 @@ export default function BettaFishPage() {
 
         {view === 'graph' && (
           <div style={{ maxWidth: '800px' }}>
-            <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '16px' }}>Grafo de Conhecimento</h2>
-            <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '20px', border: '1px solid var(--border-subtle)' }}>
-              <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', margin: 0 }}>
-                {graphData ?? 'Carregando...'}
-              </pre>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1rem', color: 'var(--text-primary)' }}>Grafo de Conhecimento — Memgraph</h2>
+              <button onClick={loadGraph} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer' }}>Atualizar</button>
             </div>
+            {!graphData ? (
+              <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '40px', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>Carregando grafo...</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* Node counts */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px' }}>
+                  {(graphData.nodes || []).map((n: { label: string; cnt: number }) => (
+                    <div key={n.label} style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '14px', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.25rem', color: 'var(--accent)', fontWeight: 'bold' }}>{n.cnt.toLocaleString('pt-BR')}</div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '4px' }}>{n.label}</div>
+                    </div>
+                  ))}
+                </div>
+                {/* Relationship counts */}
+                <div style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius)', padding: '16px', border: '1px solid var(--border-subtle)' }}>
+                  <h3 style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-primary)', marginBottom: '8px', textTransform: 'uppercase' }}>Relacionamentos</h3>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {(graphData.relationships || []).map((r: { rel: string; cnt: number }) => (
+                      <span key={r.rel} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-secondary)', padding: '4px 10px', background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.2)', borderRadius: '12px' }}>
+                        {r.rel}: {r.cnt}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
