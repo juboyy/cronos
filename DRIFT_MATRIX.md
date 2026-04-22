@@ -70,7 +70,7 @@
 ### 2.1 BettaFish
 | Requisito | Status | Evidência |
 |-----------|--------|-----------|
-| Interface traduzida para PT-BR | ❌ | HTML serve `lang="zh-CN"`, título "微舆", toda UI em chinês |
+| Interface traduzida para PT-BR | ✅ | Tradução completa: Flask templates, Streamlit UIs, API responses, ReportEngine. `lang="pt-BR"`, user-facing strings em português |
 | Sub-engines funcionais (Insight/Media/Query/Forum) | ❌ | Portas 8001-8003 `Connection refused` (screenshot #4) |
 | Busca multi-motor funcional | ❌ | 3/4 engines retornam HTTPConnectionPool error |
 | Proxy Vercel com tradução | ⚠️ | Proxy existe mas BettaFish API está com sub-engines down |
@@ -78,7 +78,7 @@
 ### 2.2 MiroFish
 | Requisito | Status | Evidência |
 |-----------|--------|-----------|
-| Interface traduzida para PT-BR | ❌ | HTML serve `lang="zh-CN"`, título "预测万物", toda UI em chinês |
+| Interface traduzida para PT-BR | ✅ | vue-i18n `pt.json` criado (665 chaves), default locale `pt`, fallback `en`, `lang="pt-BR"`, backend locale `pt` |
 | Simulação preditiva funcional | ❌ | Retorna `{"error": "Informe o project_id"}` (screenshot #1) |
 | Integração com dados do Cronos | ❌ | Não implementado — MiroFish não consome Supabase |
 
@@ -119,8 +119,8 @@
 ### O que NÃO foi entregue (12/15 requisitos):
 1. ❌ Briefing world-class (arquivo inalterado)
 2. ❌ Alerts interativos (arquivo inalterado)
-3. ❌ BettaFish PT-BR (toda UI em chinês)
-4. ❌ MiroFish PT-BR (toda UI em chinês)
+3. ✅ BettaFish PT-BR (traduzido e deployed)
+4. ✅ MiroFish PT-BR (traduzido e deployed)
 5. ❌ MiroFish simulação funcional (erro project_id)
 6. ❌ BettaFish sub-engines (Connection refused)
 7. ❌ Feed com busca integrada
@@ -132,7 +132,7 @@
 
 ### Causa-raiz:
 - Subagents falharam em gravar arquivos (Briefing + Alerts)
-- Engines BettaFish/MiroFish são repos chineses originais rodando em Docker — tradução requer fork/patch dos containers
+- ~~Engines BettaFish/MiroFish são repos chineses originais rodando em Docker — tradução requer fork/patch dos containers~~ **FEITO: containers patchados e imagens commitadas como `bettafish:pt-br` e `mirofish:pt-br`**
 - Foco excessivo em spec writing vs execução real
 - Zero verificação visual (browser testing) pós-implementação
 - Deploy nunca executado
@@ -153,8 +153,8 @@
 7. **BettaFish sub-engines** — reiniciar containers ou reconfigurar portas internas
 
 ### P2 — Próxima sessão
-8. **BettaFish PT-BR** — fork do container, patch i18n no HTML/JS
-9. **MiroFish PT-BR** — fork do container, patch i18n no Vue.js
+8. ~~**BettaFish PT-BR** — fork do container, patch i18n no HTML/JS~~ ✅ FEITO
+9. ~~**MiroFish PT-BR** — fork do container, patch i18n no Vue.js~~ ✅ FEITO
 10. **Integração MiroFish ↔ Cronos Supabase** — pipeline de dados
 
 ---
