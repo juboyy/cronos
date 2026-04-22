@@ -115,7 +115,7 @@ export default function AlertsPage() {
   useEffect(() => {
     fetch('/api/cronos/alerts').then(r => r.json()).then(setAlerts).catch(() => {});
     fetch('/api/cronos/notifications').then(r => r.json()).then(d => setNotifications(Array.isArray(d) ? d : d.notifications || [])).catch(() => {});
-    fetch('/api/cronos/impacts').then(r => r.json()).then(setImpacts).catch(() => {});
+    fetch('/api/cronos/impact').then(r => r.json()).then(setImpacts).catch(() => {});
   }, []);
 
   const create = async (e: React.FormEvent) => {

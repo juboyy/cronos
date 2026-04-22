@@ -260,7 +260,7 @@ export default function BriefingPage() {
 
         // Source Health Matrix
         const srcMap: Record<string, { count: number; latest: string }> = {};
-        const allArticlesForHealth = await fetch('/api/cronos/articles?limit=500').then(r => r.json());
+        const allArticlesForHealth = await safeFetch('/api/cronos/articles?limit=500');
         (allArticlesForHealth.articles || allArticlesForHealth || []).forEach((a: Article) => {
           const src = a.source || 'unknown';
           if (!srcMap[src]) srcMap[src] = { count: 0, latest: '' };

@@ -88,10 +88,11 @@ export default function ImpactPage() {
   const [selectedImpact, setSelectedImpact] = useState<Impact | null>(null);
 
   useEffect(() => {
+    const safeFetch = (url: string) => fetch(url).then(r => r.ok ? r.json() : []).catch(() => []);
     Promise.all([
-      fetch('/api/cronos/impact').then(r => r.json()),
-      fetch('/api/cronos/prices').then(r => r.json()),
-      fetch('/api/cronos/entities').then(r => r.json()),
+      safeFetch('/api/cronos/impact'),
+      safeFetch('/api/cronos/prices?ticker=PETR4'),
+      safeFetch('/api/cronos/entities'),
     ]).then(([imp, pr, ent]) => {
       setImpacts(imp);
       setPrices(pr);

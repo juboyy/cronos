@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ArticleAnalysis } from './ArticleAnalysis';
 import { ArticleModal } from './ArticleModal';
+import IntelSearchModal from './IntelSearchModal';
 import { Article } from '@/lib/types';
 
 interface FeedArticle extends Article {}
@@ -65,6 +66,7 @@ export function ArticleFeed({ articles, totalCount }: { articles: FeedArticle[];
   const [page, setPage] = useState(1);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<FeedArticle[] | null>(null);
   const [searching, setSearching] = useState(false);
   const searchTimerRef = { current: null as ReturnType<typeof setTimeout> | null };
@@ -116,46 +118,35 @@ export function ArticleFeed({ articles, totalCount }: { articles: FeedArticle[];
 
   return (
     <>
-      {/* Search Bar */}
+      {/* Search Bar - Opens Intel Modal */}
       <div style={{ padding: '0 16px', marginBottom: '12px' }}>
-        <div style={{ position: 'relative' }}>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => handleSearch(e.target.value)}
-            placeholder="Buscar artigos... (ex: PETR4, Selic, inflação)"
-            style={{
-              width: '100%', padding: '10px 14px 10px 36px',
-              background: 'var(--bg-surface)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)', color: 'var(--text-primary)',
-              fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', outline: 'none',
-            }}
-          />
+        <button
+          onClick={() => setSearchModalOpen(true)}
+          style={{
+            width: '100%', padding: '10px 14px 10px 36px',
+            background: 'var(--bg-surface)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)', color: 'var(--text-muted)',
+            fontFamily: 'var(--font-mono)', fontSize: '0.8125rem',
+            textAlign: 'left', cursor: 'pointer', position: 'relative',
+          }}
+        >
           <span style={{
             position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
-            fontSize: '0.875rem', color: 'var(--text-muted)', pointerEvents: 'none',
-          }}>
-            {searching ? '◈' : '⌕'}
-          </span>
-          {searchQuery && (
-            <button
-              onClick={() => { setSearchQuery(''); setSearchResults(null); }}
-              style={{
-                position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
-                background: 'transparent', border: 'none', color: 'var(--text-muted)',
-                cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
-              }}
-            >
-              ✕
-            </button>
-          )}
-        </div>
-        {searchResults !== null && (
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-            {searchResults.length} resultado{searchResults.length !== 1 ? 's' : ''} para "{searchQuery}"
-          </div>
-        )}
+            fontSize: '0.875rem', pointerEvents: 'none',
+          }}>🔍</span>
+          Buscar ticker, empresa, setor ou tema...
+          <kbd style={{
+            position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+            fontSize: '0.625rem', color: 'var(--text-muted)',
+            border: '1px solid var(--border)', padding: '2px 6px', borderRadius: '4px',
+            fontFamily: 'var(--font-mono)',
+          }}>⌘K</kbd>
+        </button>
       </div>
+      <IntelSearchModal
+        isOpen={searchModalOpen}
+        onClose={() => setSearchModalOpen(false)}
+      />
 
       {/* Time Filter Bar */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', padding: '0 16px' }}>

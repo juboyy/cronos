@@ -5,11 +5,31 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const offset = parseInt(searchParams.get('offset') || '0', 10);
   const limit = Math.min(parseInt(searchParams.get('limit') || '25', 10), 500);
+  const search = searchParams.get('search');
+  const entityId = searchParams.get('entity_id');
 
   try {
+    let filter = '';
+    if (search) {
+      filter += `&title=ilike.*${search}*`;
+    }
+
+    // If entity_id is provided, get articles linked to that entity
+    if (entityId) {
+      const links = await supabaseQuery(
+        'cronos_article_entities',
+        `select=article_id&entity_id=eq.${entityId}&limit=${limit}`
+      );
+      const articleIds = (links as { article_id: string }[]).map((l) => l.article_id);
+      if (articleIds.length === 0) {
+        return NextResponse.json({ articles: [], total: 0, offset, limit });
+      }
+      filter += `&id=in.(${articleIds.join(',')})`;
+    }
+
     const articles = await supabaseQuery(
       'cronos_articles',
-      `select=id,title,source,summary,published_at,url,cronos_sentiment(score,label)&order=published_at.desc.nullslast&limit=${limit}&offset=${offset}`
+      `select=id,title,source,summary,published_at,url,cronos_sentiment(score,label)&order=published_at.desc.nullslast&limit=${limit}&offset=${offset}${filter}`
     );
 
     // Get total count
