@@ -61,7 +61,7 @@ async function callCloudCodeAssist(
   opts: { temperature?: number; maxTokens?: number; model?: string; json?: boolean },
   token: string,
 ): Promise<{ ok: boolean; text?: string; data?: unknown; error?: string }> {
-  const model = opts.model || 'gemini-2.0-flash';
+  const model = opts.model || 'gemini-2.5-flash';
 
   const requestBody = {
     project: CCA_PROJECT_ID,
@@ -139,7 +139,7 @@ async function callAIStudio(
   prompt: string,
   opts: { temperature?: number; maxTokens?: number; model?: string; json?: boolean },
 ): Promise<{ ok: boolean; text?: string; data?: unknown; error?: string; status?: number }> {
-  const model = opts.model || 'gemini-2.0-flash';
+  const model = opts.model || 'gemini-2.0-flash'; // AI Studio fallback uses cheaper model
   const url = `${AI_STUDIO_BASE}/models/${model}:generateContent?key=${GEMINI_KEY}`;
 
   const body = {
