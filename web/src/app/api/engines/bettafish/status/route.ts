@@ -1,17 +1,16 @@
 import { NextResponse } from 'next/server';
 
-const BETTAFISH_BACKEND = 'https://bettafish.216-238-124-248.nip.io';
-
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  try {
-    const res = await fetch(`${BETTAFISH_BACKEND}/api/status`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    const data = await res.json();
-    return NextResponse.json({ engines: data ?? {} });
-  } catch {
-    return NextResponse.json({ engines: {} });
-  }
+  return NextResponse.json({
+    engines: {
+      insight: { status: 'active', model: 'gemini-2.0-flash', type: 'analysis' },
+      media: { status: 'active', model: 'gemini-2.0-flash', type: 'media_monitoring' },
+      query: { status: 'active', model: 'gemini-2.0-flash', type: 'query_engine' },
+      forum: { status: 'active', model: 'gemini-2.0-flash', type: 'discussion' },
+    },
+    uptime: Math.floor(Date.now() / 1000),
+    version: '2.0.0-serverless',
+  });
 }

@@ -1,47 +1,61 @@
 import { NextResponse } from 'next/server';
-
-const BETTAFISH_BACKEND = 'https://bettafish.216-238-124-248.nip.io';
+import { geminiGenerate } from '@/lib/gemini';
+import { supabaseQuery } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
-
-// Chinese → Portuguese for API responses
-const ZH_PT: [RegExp, string][] = [
-  [/系统已启动/g, 'Sistema já iniciado'],
-  [/系统正在启动/g, 'Sistema iniciando'],
-  [/应用已经在运行/g, 'Aplicação já em execução'],
-  [/启动失败/g, 'Falha ao iniciar'],
-  [/暂无可用的知识图谱数据/g, 'Nenhum dado de grafo disponível'],
-  [/论坛启动失败/g, 'Falha ao iniciar fórum'],
-  [/系统初始化/g, 'Inicialização do sistema'],
-  [/请提供/g, 'Informe'],
-  [/搜索/g, 'Busca'],
-  [/成功/g, 'Sucesso'],
-  [/失败/g, 'Falha'],
-];
-
-function translateJson(text: string): string {
-  let result = text;
-  for (const [re, pt] of ZH_PT) {
-    result = result.replace(re, pt);
-  }
-  return result;
-}
 
 export async function POST(req: Request) {
   try {
     const { query } = await req.json();
-    const res = await fetch(`${BETTAFISH_BACKEND}/api/search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query }),
-      signal: AbortSignal.timeout(20000),
-    });
-    const text = await res.text();
-    const translated = translateJson(text);
-    return new NextResponse(translated, {
-      headers: { 'Content-Type': 'application/json' },
-    });
-  } catch {
-    return NextResponse.json({ results: {}, error: 'Conexão falhou' });
+    if (!query || !query.trim()) {
+      return NextResponse.json({ results: {}, error: 'Query vazia' }, { status: 400 });
+    }
+
+    // Fetch recent articles from Supabase for context
+    const articles = await supabaseQuery(
+      'cronos_articles',
+      `select=id,title,source,summary,published_at&order=published_at.desc&limit=20`
+    ) as Array<{ id: string; title: string; source: string; summary: string; published_at: string }>;
+
+    const articlesContext = articles
+      .map((a, i) => `[${i + 1}] ${a.title} (${a.source}) — ${(a.summary || '').slice(0, 200)}`)
+      .join('\n');
+
+    const prompt = `Você é o BettaFish, um motor de análise financeira multi-perspectiva.
+
+QUERY DO USUÁRIO: ${query}
+
+ARTIGOS RECENTES DO MERCADO BRASILEIRO:
+${articlesContext}
+
+Analise a query do usuário considerando os artigos disponíveis. Retorne JSON:
+{
+  "insight": {
+    "summary": "Resumo analítico em 2-3 parágrafos",
+    "sentiment": "bullish" | "bearish" | "neutral" | "mixed",
+    "confidence": 0.0-1.0,
+    "key_factors": ["fator1", "fator2"],
+    "affected_tickers": ["PETR4", "VALE3"]
+  },
+  "related_articles": [{"title": "...", "source": "...", "relevance": 0.0-1.0}],
+  "perspectives": [
+    {"role": "bull", "argument": "...", "confidence": 0.0-1.0},
+    {"role": "bear", "argument": "...", "confidence": 0.0-1.0},
+    {"role": "quant", "argument": "...", "confidence": 0.0-1.0}
+  ],
+  "actionable_insight": "Recomendação acionável em 1 frase"
+}
+
+Tudo em Português. Perspectiva do mercado brasileiro.`;
+
+    const result = await geminiGenerate(prompt, { temperature: 0.4, json: true });
+
+    if (!result.ok) {
+      return NextResponse.json({ results: {}, error: result.error });
+    }
+
+    return NextResponse.json({ results: result.data, status: 'completed' });
+  } catch (e) {
+    return NextResponse.json({ results: {}, error: String(e) });
   }
 }

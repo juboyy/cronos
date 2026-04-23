@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const PROXY_URL = '/api/engines/mirofish';
-const MIROFISH_FRONTEND = 'https://mirofish.216-238-124-248.nip.io';
+// Engine now runs serverless — no external frontend needed
 
 interface EngineStatus {
   backend: 'loading' | 'online' | 'offline';
@@ -219,12 +219,11 @@ export default function MiroFishPage() {
         )}
 
         {view === 'full' && (
-          <iframe
-            src={MIROFISH_FRONTEND}
-            style={{ width: '100%', height: '100%', border: 'none', background: '#0a0a0a' }}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            title="MiroFish — Interface Completa"
-          />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: '12px' }}>
+            <span style={{ fontSize: '3rem' }}>🦈</span>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>MiroFish v2.0 — Modo Serverless</p>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)', maxWidth: '400px', textAlign: 'center' }}>Engine roda diretamente nas API routes (Gemini 2.0 Flash). Use o Simulador para executar predições.</p>
+          </div>
         )}
       </div>
     </div>

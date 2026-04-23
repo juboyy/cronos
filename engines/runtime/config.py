@@ -2,6 +2,7 @@
 import os
 import json
 
+_conf_path = os.path.expanduser('~/.openclaw/openclaw.json')
 _conf = {}
 if os.path.exists(_conf_path):
     with open(_conf_path) as f:
@@ -9,7 +10,7 @@ if os.path.exists(_conf_path):
 
 _env = _conf.get('env', {})
 
-LLM_API_KEY = _env.get('GOOGLE_API_KEY', os.environ.get('GOOGLE_API_KEY', ''))
+LLM_API_KEY = _env.get('GOOGLE_API_KEY', os.environ.get('GOOGLE_API_KEY', os.environ.get('GOOGLE_AI_API_KEY', '')))
 LLM_MODEL = 'gemini-2.0-flash'
 LLM_MODEL_PRO = 'gemini-2.5-pro-preview-05-06'
 LLM_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'

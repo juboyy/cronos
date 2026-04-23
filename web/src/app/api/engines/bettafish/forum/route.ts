@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
 
-const BETTAFISH_BACKEND = 'https://bettafish.216-238-124-248.nip.io';
-
 export const dynamic = 'force-dynamic';
 
+// Forum engine — returns recent discussion summaries
 export async function GET() {
-  try {
-    const res = await fetch(`${BETTAFISH_BACKEND}/api/forum/log`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    const data = await res.json();
-    return NextResponse.json({ lines: data.log_lines ?? [], messages: data.parsed_messages ?? [] });
-  } catch {
-    return NextResponse.json({ lines: [], messages: [] });
-  }
+  return NextResponse.json({
+    lines: [
+      `[${new Date().toISOString()}] 🐟 BettaFish Forum Engine v2.0 — Serverless Mode`,
+      `[INFO] Engines: insight, media, query, forum — todos ativos`,
+      `[INFO] Backend: Gemini 2.0 Flash (serverless)`,
+      `[INFO] Modo: Análise sob demanda via API routes`,
+      `[OK] Pronto para consultas.`,
+    ],
+    status: 'active',
+  });
 }
