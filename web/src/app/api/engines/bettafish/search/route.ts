@@ -21,14 +21,10 @@ export async function POST(req: Request) {
     }
 
     // STEP 1: Retrieve articles matching query
-    const words = query.trim().split(/\s+/).slice(0, 4);
-    const filters = words
-      .map((w: string) => `title.ilike.%${encodeURIComponent(w)}%,summary.ilike.%${encodeURIComponent(w)}%`)
-      .join(',');
-
+    const searchTerm = query.trim();
     const articles = await supabaseQuery(
       'cronos_articles',
-      `select=id,title,source,summary,published_at&or=(${filters})&order=published_at.desc&limit=15`
+      `select=id,title,source,summary,published_at&or=(title.ilike.*${encodeURIComponent(searchTerm)}*,summary.ilike.*${encodeURIComponent(searchTerm)}*)&order=published_at.desc&limit=15`
     ) as Array<{ id: string; title: string; source: string; summary: string; published_at: string }>;
 
     // Fallback: if no matches, get latest articles
