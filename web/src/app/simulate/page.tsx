@@ -69,7 +69,7 @@ export default function SimulatePage() {
     if (!scenario.trim() || loading) return;
     setLoading(true);
     try {
-      await fetch('/api/cronos/simulate', {
+      const res = await fetch('/api/cronos/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -79,8 +79,51 @@ export default function SimulatePage() {
           config: { agents: 50, rounds: 3 },
         }),
       });
-      const list = await fetch('/api/cronos/simulate').then(r => r.json());
-      setSimulations(list);
+      const data = await res.json();
+      // API returns the simulation directly with report/agents/rounds
+      // Transform to match Simulation interface
+      const sim: Simulation = {
+        id: data.simulation_id || `sim_${Date.now()}`,
+        scenario: data.scenario || scenario,
+        tickers: tickers.split(',').map(t => t.trim()).filter(Boolean),
+        config: {},
+        status: data.status || 'completed',
+        created_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        result: {
+          simulation_id: data.simulation_id || '',
+          scenario: data.scenario || scenario,
+          predictions: (data.report?.prediction ? [{
+            ticker: tickers.split(',')[0]?.trim() || 'MARKET',
+            direction: data.report.prediction.direction === 'bullish' ? 'up' : data.report.prediction.direction === 'bearish' ? 'down' : 'neutral',
+            probability: data.report.prediction.confidence || 0.5,
+            magnitude: data.report.prediction.expected_magnitude?.includes('high') ? 'large' : data.report.prediction.expected_magnitude?.includes('moderate') ? 'moderate' : 'small',
+            reasoning: data.report.executive_summary || '',
+            timeframe: data.report.prediction.time_horizon || 'curto prazo',
+          }] : []) as Prediction[],
+          scenarios: [
+            { name: 'Bull Case', probability: data.report?.prediction?.probability_up || 0.3, description: data.report?.key_factors?.[0] || '', catalysts: data.report?.key_factors || [] },
+            { name: 'Bear Case', probability: data.report?.prediction?.probability_down || 0.3, description: data.report?.risk_factors?.[0] || '', catalysts: data.report?.risk_factors || [] },
+            { name: 'Base Case', probability: data.report?.prediction?.probability_neutral || 0.4, description: data.report?.actionable_insight || '', catalysts: data.report?.dissenting_views || [] },
+          ] as ScenarioCase[],
+          agent_interactions: {
+            consensus_level: data.rounds?.[data.rounds.length - 1]?.consensus_strength || 0.5,
+            most_influential: data.agents?.[0]?.name || 'N/A',
+            strongest_disagreement: data.report?.dissenting_views?.[0] || '',
+            key_debate_points: data.rounds?.map((r: { key_tension: string }) => r.key_tension).filter(Boolean) || [],
+          },
+          rounds: data.rounds?.map((r: { round: number; key_tension: string; consensus_direction: string; consensus_strength: number }) => ({
+            round: r.round,
+            key_arguments: [r.key_tension],
+            emerging_consensus: r.consensus_direction,
+            sentiment_shift: r.consensus_strength,
+          })) || [],
+          confidence: data.report?.prediction?.confidence || 0.5,
+          caveats: data.report?.risk_factors || [],
+        },
+      };
+      setSimulations(prev => [sim, ...prev]);
+      setActive(sim);
       setScenario('');
       setTickers('');
     } finally { setLoading(false); }
