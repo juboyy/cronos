@@ -11,9 +11,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Full-text search in Portuguese
-    const tsQuery = q.trim().split(/\s+/).join(' & ');
-    const params = `select=*,cronos_sentiment(score,label,confidence)&fts=fts.${encodeURIComponent(tsQuery)}&order=published_at.desc.nullslast&limit=${limit}`;
+    // Search by title or summary using ilike (Supabase REST or filter)
+    const searchTerm = q.trim();
+    const params = `select=*,cronos_sentiment(score,label,confidence)&or=(title.ilike.*${encodeURIComponent(searchTerm)}*,summary.ilike.*${encodeURIComponent(searchTerm)}*)&order=published_at.desc.nullslast&limit=${limit}`;
     const articles = await supabaseQuery('cronos_articles', params);
     return NextResponse.json({ articles, query: q });
   } catch (e: unknown) {
