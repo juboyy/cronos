@@ -5,15 +5,11 @@ import { NotificationBell } from './NotificationBell';
 
 const NAV = [
   { href: '/', label: 'Feed' },
-  { href: '/intelligence', label: 'Intel' },
   { href: '/briefing', label: 'Briefing' },
-  { href: '/impact', label: 'Impacto' },
-  { href: '/search', label: 'Busca' },
-  { href: '/simulate', label: 'Simular' },
-  { href: '/patterns', label: 'Padrões' },
+  { href: '/analysis', label: 'Análise' },
+  { href: '/bettafish', label: '🐟 Busca' },
+  { href: '/mirofish', label: '🦈 Simulação' },
   { href: '/charts', label: 'Charts' },
-  { href: '/bettafish', label: '🐟 Betta' },
-  { href: '/mirofish', label: '🦈 Miro' },
   { href: '/alerts', label: 'Alertas' },
 ];
 

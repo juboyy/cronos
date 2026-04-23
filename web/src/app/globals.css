@@ -7,6 +7,7 @@
   --bg-surface:     hsl(225 12% 6%);
   --bg-elevated:    hsl(225 10% 8.5%);
   --bg-hover:       hsl(225 10% 11%);
+  --bg-card:         hsl(225 12% 6%);
 
   --border:         hsl(225 10% 13%);
   --border-subtle:  hsl(225 8% 9%);

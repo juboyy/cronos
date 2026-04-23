@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const PROXY_URL = '/api/engines/bettafish';
-const BETTAFISH_URL = 'https://bettafish.216-238-124-248.nip.io';
 
 interface EngineStatus {
   backend: 'loading' | 'online' | 'offline';
@@ -20,7 +19,7 @@ interface SearchResult {
 
 export default function BettaFishPage() {
   const [engine, setEngine] = useState<EngineStatus>({ backend: 'loading', started: false, subEngines: {} });
-  const [view, setView] = useState<'search' | 'forum' | 'graph' | 'status' | 'full'>('search');
+  const [view, setView] = useState<'search' | 'forum' | 'graph' | 'status'>('search');
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Record<string, SearchResult> | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -105,7 +104,7 @@ export default function BettaFishPage() {
             { id: 'forum' as const, label: 'Fórum', onSwitch: loadForum },
             { id: 'graph' as const, label: 'Grafo', onSwitch: loadGraph },
             { id: 'status' as const, label: 'Status' },
-            { id: 'full' as const, label: '↗ Streamlit' },
+
           ]).map(v => (
             <button key={v.id} onClick={() => { setView(v.id); v.onSwitch?.(); }}
               style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.04em', textTransform: 'uppercase', padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', transition: 'all 150ms', background: view === v.id ? 'var(--accent)' : 'transparent', color: view === v.id ? '#000' : 'var(--text-tertiary)' }}>
@@ -304,14 +303,7 @@ export default function BettaFishPage() {
           </div>
         )}
 
-        {view === 'full' && (
-          <iframe
-            src={BETTAFISH_URL}
-            style={{ width: '100%', height: '100%', border: 'none', background: '#0a0a0a' }}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            title="BettaFish — Streamlit"
-          />
-        )}
+
       </div>
     </div>
   );

@@ -3,6 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const PROXY_URL = '/api/engines/mirofish';
+
+const SCENARIO_PRESETS = [
+  { label: '📈 Selic +0.5%', topic: 'O Copom decide elevar a Selic em 50 bps para conter inflação persistente', context: 'ITUB4, BBDC4, BBAS3, B3SA3' },
+  { label: '💵 Dólar a R$6', topic: 'Crise de confiança fiscal leva o dólar a romper R$6.00 com fuga de capital estrangeiro', context: 'PETR4, VALE3, SUZB3, EMBR3' },
+  { label: '🛢 Petróleo +20%', topic: 'Escalada no Oriente Médio leva petróleo Brent acima de US$100 por barril', context: 'PETR4, PRIO3, CSAN3, UGPA3' },
+  { label: '🌍 Recessão Global', topic: 'Dados econômicos confirmam recessão nos EUA e Europa, commodities desabam', context: 'VALE3, CSNA3, SUZB3, ABEV3' },
+];
 // Engine now runs serverless — no external frontend needed
 
 interface EngineStatus {
@@ -43,6 +50,12 @@ export default function MiroFishPage() {
   }, []);
 
   useEffect(() => { checkHealth(); }, [checkHealth]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const topic = params.get('topic');
+    if (topic) setForm(f => ({ ...f, topic }));
+  }, []);
 
   const loadProjects = async () => {
     setProjectsLoading(true);
@@ -111,6 +124,41 @@ export default function MiroFishPage() {
             <div style={{ marginBottom: '24px' }}>
               <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '4px' }}>Simulação Preditiva</h2>
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)' }}>Crie cenários e explore projeções baseadas em inteligência coletiva de agentes.</p>
+            </div>
+
+            {/* Scenario Presets */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>Cenários Rápidos</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {SCENARIO_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    onClick={() => setForm(f => ({ ...f, topic: preset.topic, context: preset.context }))}
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.5625rem',
+                      padding: '5px 10px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border-subtle)',
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 150ms',
+                      whiteSpace: 'nowrap',
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--accent)';
+                      (e.currentTarget as HTMLButtonElement).style.color = 'var(--accent)';
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-subtle)';
+                      (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)';
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
