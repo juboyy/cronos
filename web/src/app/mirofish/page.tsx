@@ -26,6 +26,8 @@ export default function MiroFishPage() {
   const [view, setView] = useState<'simulator' | 'projects' | 'status' | 'full'>('simulator');
   const [form, setForm] = useState<SimulationForm>({ topic: '', context: '' });
   const [simResult, setSimResult] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [simData, setSimData] = useState<any>(null);
   const [simLoading, setSimLoading] = useState(false);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -63,9 +65,11 @@ export default function MiroFishPage() {
     }).catch(() => null);
     if (res?.ok) {
       const data = await res.json();
-      setSimResult(data.result ?? JSON.stringify(data, null, 2));
+      setSimData(data.prediction ? data : null);
+      setSimResult(data.prediction ? null : (data.result ?? JSON.stringify(data, null, 2)));
     } else {
       setSimResult('Erro ao executar simulação. Verifique os logs.');
+      setSimData(null);
     }
     setSimLoading(false);
   };
@@ -139,7 +143,104 @@ export default function MiroFishPage() {
               </button>
             </div>
 
-            {simResult && (
+            {/* Structured result */}
+            {simData && simData.prediction && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Prediction Header */}
+                <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)', padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ fontSize: '1.5rem' }}>{simData.prediction.direction === 'bearish' ? '📉' : simData.prediction.direction === 'bullish' ? '📈' : '➡️'}</span>
+                      <div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: simData.prediction.direction === 'bearish' ? '#ef4444' : simData.prediction.direction === 'bullish' ? '#22c55e' : 'var(--text-primary)', fontWeight: 700, textTransform: 'uppercase' }}>{simData.prediction.direction}</div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)' }}>{simData.prediction.time_horizon} · {simData.prediction.expected_magnitude}</div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.5rem', color: 'var(--accent)', fontWeight: 700 }}>{Math.round(simData.prediction.confidence * 100)}%</div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)' }}>CONFIANÇA</div>
+                    </div>
+                  </div>
+                  {/* Probability bars */}
+                  <div style={{ display: 'flex', gap: '2px', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
+                    <div style={{ width: `${(simData.prediction.probability_up || 0) * 100}%`, background: '#22c55e', transition: 'width 500ms' }} />
+                    <div style={{ flex: 1, background: 'var(--border-subtle)' }} />
+                    <div style={{ width: `${(simData.prediction.probability_down || 0) * 100}%`, background: '#ef4444', transition: 'width 500ms' }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: '#22c55e' }}>↑ {Math.round((simData.prediction.probability_up || 0) * 100)}%</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: '#ef4444' }}>↓ {Math.round((simData.prediction.probability_down || 0) * 100)}%</span>
+                  </div>
+                </div>
+
+                {/* Executive Summary */}
+                {simData.executive_summary && (
+                  <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)', padding: '20px' }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Sumário Executivo</div>
+                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{simData.executive_summary}</p>
+                  </div>
+                )}
+
+                {/* Agents Grid */}
+                {simData.agents?.length > 0 && (
+                  <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)', padding: '20px' }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>Agentes ({simData.agents.length})</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
+                      {simData.agents.map((a: { id: string; name: string; archetype: string; final_bias?: string; bias?: string; confidence: number; key_argument?: string; reasoning?: string }) => (
+                        <div key={a.id} style={{ padding: '12px', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', borderLeft: `3px solid ${(a.final_bias || a.bias) === 'bearish' ? '#ef4444' : (a.final_bias || a.bias) === 'bullish' ? '#22c55e' : '#eab308'}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-primary)', fontWeight: 600 }}>{a.name}</span>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: (a.final_bias || a.bias) === 'bearish' ? '#ef4444' : (a.final_bias || a.bias) === 'bullish' ? '#22c55e' : '#eab308', textTransform: 'uppercase' }}>{a.final_bias || a.bias}</span>
+                          </div>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)', marginBottom: '6px' }}>{a.archetype}</div>
+                          <div style={{ fontSize: '0.625rem', color: 'var(--text-tertiary)', lineHeight: 1.4 }}>{(a.key_argument || a.reasoning || '').slice(0, 120)}{(a.key_argument || a.reasoning || '').length > 120 ? '...' : ''}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Key Factors + Risks */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  {simData.key_factors?.length > 0 && (
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)', padding: '16px' }}>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Fatores-Chave</div>
+                      {simData.key_factors.map((f: string, i: number) => (
+                        <div key={i} style={{ display: 'flex', gap: '6px', alignItems: 'baseline', marginBottom: '4px' }}>
+                          <span style={{ color: 'var(--accent)', fontSize: '0.625rem' }}>→</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>{f}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {simData.risk_factors?.length > 0 && (
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)', padding: '16px' }}>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Riscos</div>
+                      {simData.risk_factors.map((f: string, i: number) => (
+                        <div key={i} style={{ display: 'flex', gap: '6px', alignItems: 'baseline', marginBottom: '4px' }}>
+                          <span style={{ color: '#ef4444', fontSize: '0.625rem' }}>⚠</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>{f}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Actionable Insight */}
+                {simData.actionable_insight && (
+                  <div style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.2)', borderRadius: 'var(--radius)', padding: '16px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: '1rem' }}>💡</span>
+                    <div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>Insight Acionável</div>
+                      <p style={{ fontFamily: 'var(--font-display)', fontSize: '0.8125rem', color: 'var(--text-primary)', lineHeight: 1.5, margin: 0 }}>{simData.actionable_insight}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Fallback: raw text result */}
+            {simResult && !simData && (
               <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)', padding: '20px' }}>
                 <h3 style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px' }}>Resultado</h3>
                 <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', margin: 0 }}>{simResult}</pre>
