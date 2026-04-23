@@ -145,19 +145,61 @@ export default function BettaFishPage() {
 
             {searchResults && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {Object.entries(searchResults).map(([key, val]) => (
-                  <div key={key} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)', padding: '16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-primary)', textTransform: 'uppercase' }}>{key}</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: val.success ? '#22c55e' : '#ef4444' }}>
-                        {val.success ? '✓' : '✗'}
-                      </span>
+                {Object.entries(searchResults).map(([key, val]) => {
+                  // Determine content: val can be a SearchResult {source,success,data,message}
+                  // or raw data from Gemini (string, array, object with summary, etc.)
+                  const isLegacy = val && typeof val === 'object' && 'success' in val;
+                  const hasData = val !== null && val !== undefined && 
+                    !(Array.isArray(val) && val.length === 0) &&
+                    !(typeof val === 'object' && Object.keys(val).length === 0);
+                  const isEmpty = !hasData;
+
+                  let content = '';
+                  if (isLegacy) {
+                    content = val.message || (val.data ? JSON.stringify(val.data, null, 2) : 'Sem dados');
+                  } else if (typeof val === 'string') {
+                    content = val;
+                  } else if (Array.isArray(val)) {
+                    if (val.length === 0) {
+                      content = 'Nenhum resultado encontrado';
+                    } else {
+                      content = val.map((item, i) => {
+                        if (typeof item === 'string') return `${i + 1}. ${item}`;
+                        if (item.role) return `[${item.role.toUpperCase()}] ${item.argument || ''} (confiança: ${Math.round((item.confidence || 0) * 100)}%)`;
+                        if (item.title) return `• ${item.title} (${item.source || ''}) — relevância: ${Math.round((item.relevance || 0) * 100)}%`;
+                        return JSON.stringify(item, null, 2);
+                      }).join('\n');
+                    }
+                  } else if (typeof val === 'object' && val !== null) {
+                    if (val.summary) {
+                      const parts = [val.summary];
+                      if (val.sentiment) parts.push(`\nSentimento: ${val.sentiment} (${Math.round((val.confidence || 0) * 100)}%)`);
+                      if (val.key_factors?.length) parts.push(`Fatores: ${val.key_factors.join(', ')}`);
+                      if (val.affected_tickers?.length) parts.push(`Tickers: ${val.affected_tickers.join(', ')}`);
+                      content = parts.join('\n');
+                    } else {
+                      content = JSON.stringify(val, null, 2);
+                    }
+                  } else {
+                    content = 'Sem dados';
+                  }
+
+                  const statusOk = isLegacy ? val.success : hasData;
+
+                  return (
+                    <div key={key} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)', padding: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--text-primary)', textTransform: 'uppercase' }}>{key.replace(/_/g, ' ')}</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: statusOk ? '#22c55e' : (isEmpty ? 'var(--text-muted)' : '#ef4444') }}>
+                          {statusOk ? '✓' : (isEmpty ? '—' : '✗')}
+                        </span>
+                      </div>
+                      <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, maxHeight: '300px', overflow: 'auto', lineHeight: '1.5' }}>
+                        {content}
+                      </pre>
                     </div>
-                    <pre style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, maxHeight: '200px', overflow: 'auto' }}>
-                      {val.message || (val.data ? JSON.stringify(val.data, null, 2) : 'Sem dados')}
-                    </pre>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
