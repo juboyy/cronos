@@ -39,6 +39,11 @@ export async function geminiGenerate(
         let cleaned = text;
         if (cleaned.includes('```json')) cleaned = cleaned.split('```json')[1].split('```')[0].trim();
         else if (cleaned.includes('```')) cleaned = cleaned.split('```')[1].split('```')[0].trim();
+        // Strip control characters that Gemini sometimes injects (tabs, newlines inside strings)
+        cleaned = cleaned.replace(/[\x00-\x1f\x7f]/g, (ch: string) => {
+          if (ch === '\n' || ch === '\r' || ch === '\t') return ' ';
+          return '';
+        });
         const parsed = JSON.parse(cleaned);
         return { ok: true, data: parsed, text: cleaned };
       } catch (e) {

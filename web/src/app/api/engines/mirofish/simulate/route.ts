@@ -30,11 +30,11 @@ export async function POST(req: NextRequest) {
     // Fetch recent market data for grounding
     const [articles, entities] = await Promise.all([
       supabaseQuery('cronos_articles', 'select=title,source,summary,published_at&order=published_at.desc&limit=15') as Promise<Array<{ title: string; source: string; summary: string; published_at: string }>>,
-      supabaseQuery('cronos_entities', 'select=canonical_name,type,mention_count&order=mention_count.desc&limit=20') as Promise<Array<{ canonical_name: string; type: string; mention_count: number }>>,
+      supabaseQuery('cronos_entities', 'select=canonical_name,type,sector&limit=20') as Promise<Array<{ canonical_name: string; type: string; sector: string }>>,
     ]);
 
     const recentNews = articles.map(a => `- ${a.title} (${a.source})`).join('\n');
-    const topEntities = entities.map(e => `${e.canonical_name} (${e.type}, ${e.mention_count} menções)`).join(', ');
+    const topEntities = entities.map(e => `${e.canonical_name} (${e.type})`).join(', ');
 
     const prompt = `Você é o MiroFish, um motor de predição financeira por inteligência de enxame.
 
