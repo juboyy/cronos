@@ -9,7 +9,6 @@ const NAV = [
   { href: '/analysis', label: 'Análise' },
   { href: '/bettafish', label: '🐟 Busca' },
   { href: '/mirofish', label: '🦈 Simulação' },
-  { href: '/charts', label: 'Charts' },
   { href: '/alerts', label: 'Alertas' },
 ];
 

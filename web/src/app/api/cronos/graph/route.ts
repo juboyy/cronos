@@ -1,145 +1,99 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { SUPABASE_URL, SUPABASE_KEY } from '@/lib/supabase';
 
-// Memgraph Bolt driver — we use the REST-like approach via a lightweight
-// HTTP wrapper since Next.js serverless doesn't support raw TCP Bolt easily.
-// Instead, we query Memgraph via its HTTP endpoint or a local proxy.
-// For now, we use a direct fetch to a small API we'll run on Vultr.
-
-const MEMGRAPH_API = process.env.MEMGRAPH_API_URL || 'https://memgraph.216-238-124-248.nip.io';
-
-interface CypherResult {
-  columns: string[];
-  data: Record<string, unknown>[];
-}
-
-async function cypher(query: string, params: Record<string, unknown> = {}): Promise<CypherResult> {
-  const res = await fetch(`${MEMGRAPH_API}/cypher`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, params }),
+async function sq(table: string, params: string) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+    next: { revalidate: 120 },
   });
-  
-  if (!res.ok) {
-    throw new Error(`Memgraph query failed: ${res.status} ${await res.text()}`);
-  }
-  
-  return res.json();
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
 }
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const action = searchParams.get('action') || 'summary';
-  const entity = searchParams.get('entity');
-  const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10), 100);
-
+export async function GET() {
   try {
-    switch (action) {
-      case 'summary': {
-        // Graph overview stats
-        const result = await cypher(`
-          MATCH (n) 
-          WITH labels(n)[0] AS label, count(n) AS cnt 
-          RETURN label, cnt ORDER BY cnt DESC
-        `);
-        const edgeResult = await cypher(`
-          MATCH ()-[r]->()
-          WITH type(r) AS rel, count(r) AS cnt
-          RETURN rel, cnt ORDER BY cnt DESC
-        `);
-        return NextResponse.json({ nodes: result.data, edges: edgeResult.data });
-      }
+    const [entities, impacts, ae, patterns] = await Promise.all([
+      sq('cronos_entities', 'select=*&limit=100'),
+      sq('cronos_impacts', 'select=*&limit=2000'),
+      sq('cronos_article_entities', 'select=article_id,entity_id&limit=3000'),
+      sq('cronos_patterns', 'select=*&limit=100'),
+    ]);
 
-      case 'entity': {
-        // Entity neighborhood — articles, related entities, sectors
-        if (!entity) return NextResponse.json({ error: 'entity param required' }, { status: 400 });
-        
-        const articles = await cypher(`
-          MATCH (a:Article)-[r:MENTIONS]->(e:Entity)
-          WHERE e.value = $entity OR e.canonical_name = $entity
-          RETURN a.title AS title, a.source AS source, a.published_at AS published_at,
-                 a.sentiment_score AS sentiment, r.relevance AS relevance, a.url AS url
-          ORDER BY a.published_at DESC LIMIT $limit
-        `, { entity, limit });
-        
-        const related = await cypher(`
-          MATCH (e:Entity)-[r:RELATED_TO]-(other:Entity)
-          WHERE e.value = $entity OR e.canonical_name = $entity
-          RETURN other.value AS entity, other.canonical_name AS name, 
-                 other.sector AS sector, r.weight AS weight
-          ORDER BY r.weight DESC LIMIT 10
-        `, { entity });
-        
-        return NextResponse.json({ entity, articles: articles.data, related: related.data });
-      }
+    // Impact stats keyed by entity_id AND ticker
+    type Stats = { count: number; totSent: number; totScore: number; totDelta: number; deltaN: number; volAnom: number };
+    const byEntityId: Record<string, Stats> = {};
+    const byTicker: Record<string, Stats> = {};
 
-      case 'network': {
-        // Full co-mention network for visualization
-        const nodes = await cypher(`
-          MATCH (e:Entity)<-[r:MENTIONS]-(a:Article)
-          RETURN e.value AS id, e.canonical_name AS label, e.sector AS sector,
-                 count(a) AS mentions
-          ORDER BY mentions DESC LIMIT $limit
-        `, { limit });
-        
-        const edges = await cypher(`
-          MATCH (e1:Entity)-[r:RELATED_TO]->(e2:Entity)
-          WHERE r.weight >= 2
-          RETURN e1.value AS source, e2.value AS target, r.weight AS weight
-          ORDER BY r.weight DESC LIMIT 100
-        `);
-        
-        return NextResponse.json({ nodes: nodes.data, edges: edges.data });
+    for (const imp of impacts) {
+      const pairs: [string | undefined, Record<string, Stats>][] = [[imp.entity_id, byEntityId], [imp.ticker, byTicker]];
+      for (const [key, map] of pairs) {
+        if (!key) continue;
+        if (!map[key]) map[key] = { count: 0, totSent: 0, totScore: 0, totDelta: 0, deltaN: 0, volAnom: 0 };
+        const s = map[key];
+        s.count++;
+        s.totSent += imp.sentiment_score || 0;
+        s.totScore += Math.abs(imp.impact_score || 0);
+        if (imp.delta_1d != null) { s.totDelta += imp.delta_1d; s.deltaN++; }
+        if (imp.volume_anomaly) s.volAnom++;
       }
-
-      case 'sources': {
-        // Source health with sentiment distribution
-        const result = await cypher(`
-          MATCH (a:Article)-[:FROM_SOURCE]->(s:Source)
-          WITH s.name AS source, count(a) AS total,
-               avg(a.sentiment_score) AS avg_sent,
-               max(a.published_at) AS latest
-          RETURN source, total, avg_sent, latest
-          ORDER BY total DESC
-        `);
-        return NextResponse.json({ sources: result.data });
-      }
-
-      case 'transmission': {
-        // Transmission chain: how does news about entity X affect entity Y?
-        if (!entity) return NextResponse.json({ error: 'entity param required' }, { status: 400 });
-        
-        const chain = await cypher(`
-          MATCH path = (e1:Entity)<-[:MENTIONS]-(a:Article)-[:MENTIONS]->(e2:Entity)
-          WHERE (e1.value = $entity OR e1.canonical_name = $entity)
-            AND e1 <> e2
-          WITH e2.value AS affected, e2.canonical_name AS name,
-               count(a) AS shared_articles,
-               avg(a.sentiment_score) AS avg_sentiment,
-               collect(a.title)[0..3] AS sample_titles
-          RETURN affected, name, shared_articles, avg_sentiment, sample_titles
-          ORDER BY shared_articles DESC LIMIT $limit
-        `, { entity, limit });
-        
-        return NextResponse.json({ entity, chain: chain.data });
-      }
-
-      case 'sectors': {
-        // Sector sentiment heatmap
-        const result = await cypher(`
-          MATCH (a:Article)-[:MENTIONS]->(e:Entity)-[:IN_SECTOR]->(s:Sector)
-          WITH s.name AS sector, count(DISTINCT a) AS articles,
-               avg(a.sentiment_score) AS avg_sentiment,
-               count(DISTINCT e) AS entities
-          RETURN sector, articles, avg_sentiment, entities
-          ORDER BY articles DESC
-        `);
-        return NextResponse.json({ sectors: result.data });
-      }
-
-      default:
-        return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
     }
+
+    // Patterns grouped by ticker
+    const patMap: Record<string, { pattern_type: string; description: string; avg_impact: number; occurrences: number }[]> = {};
+    for (const p of patterns) {
+      if (!patMap[p.ticker]) patMap[p.ticker] = [];
+      patMap[p.ticker].push({ pattern_type: p.pattern_type, description: p.description, avg_impact: p.avg_impact, occurrences: p.occurrences });
+    }
+
+    // Build nodes
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nodes = entities.map((e: any) => {
+      const label = e.entity_value || e.value || e.ticker || 'unknown';
+      const s = byEntityId[e.id] || byTicker[label] || null;
+      return {
+        id: e.id,
+        label,
+        name: e.canonical_name || label,
+        type: e.entity_type || e.type || 'ticker',
+        sector: e.sector || 'Outros',
+        sourceCount: e.source_count || 0,
+        signalStrength: e.signal_strength || 0,
+        impactCount: s?.count || 0,
+        avgSentiment: s ? Math.round((s.totSent / s.count) * 100) / 100 : 0,
+        avgImpact: s ? Math.round((s.totScore / s.count) * 100) / 100 : 0,
+        avgDelta: s && s.deltaN > 0 ? Math.round((s.totDelta / s.deltaN) * 100) / 100 : null,
+        volAnomalies: s?.volAnom || 0,
+        patterns: patMap[label]?.slice(0, 5) || [],
+      };
+    });
+
+    // Edges from article co-occurrence
+    const artMap: Record<string, string[]> = {};
+    for (const a of ae) {
+      if (!artMap[a.article_id]) artMap[a.article_id] = [];
+      artMap[a.article_id].push(a.entity_id);
+    }
+    const edgeCnt: Record<string, number> = {};
+    for (const ids of Object.values(artMap)) {
+      if (ids.length < 2) continue;
+      for (let i = 0; i < ids.length; i++)
+        for (let j = i + 1; j < ids.length; j++) {
+          const k = [ids[i], ids[j]].sort().join('|');
+          edgeCnt[k] = (edgeCnt[k] || 0) + 1;
+        }
+    }
+
+    const nodeSet = new Set(nodes.map((n: { id: string }) => n.id));
+    const edges = Object.entries(edgeCnt)
+      .filter(([, w]) => w >= 2)
+      .map(([k, weight]) => { const [source, target] = k.split('|'); return { source, target, weight }; })
+      .filter(e => nodeSet.has(e.source) && nodeSet.has(e.target))
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 200);
+
+    return NextResponse.json({ nodes, edges });
   } catch (e: unknown) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    return NextResponse.json({ error: (e as Error).message, nodes: [], edges: [] }, { status: 500 });
   }
 }
