@@ -30,7 +30,7 @@ interface ProjectItem {
 
 export default function MiroFishPage() {
   const [engine, setEngine] = useState<EngineStatus>({ backend: 'loading', simulations: 0 });
-  const [view, setView] = useState<'simulator' | 'projects' | 'status' | 'full'>('simulator');
+  const [view, setView] = useState<'simulator' | 'projects' | 'status'>('simulator');
   const [form, setForm] = useState<SimulationForm>({ topic: '', context: '' });
   const [simResult, setSimResult] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -107,7 +107,6 @@ export default function MiroFishPage() {
             { id: 'simulator' as const, label: 'Simulador' },
             { id: 'projects' as const, label: 'Projetos' },
             { id: 'status' as const, label: 'Status' },
-            { id: 'full' as const, label: '↗ Interface' },
           ]).map(v => (
             <button key={v.id} onClick={() => { setView(v.id); if (v.id === 'projects') loadProjects(); }}
               style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.04em', textTransform: 'uppercase', padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', transition: 'all 150ms', background: view === v.id ? 'var(--accent)' : 'transparent', color: view === v.id ? '#000' : 'var(--text-tertiary)' }}>
@@ -118,7 +117,7 @@ export default function MiroFishPage() {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto', padding: view === 'full' ? 0 : '24px clamp(16px, 3vw, 40px)' }}>
+      <div style={{ flex: 1, overflow: 'auto', padding: '24px clamp(16px, 3vw, 40px)' }}>
         {view === 'simulator' && (
           <div style={{ maxWidth: '800px' }}>
             <div style={{ marginBottom: '24px' }}>
@@ -367,13 +366,6 @@ export default function MiroFishPage() {
           </div>
         )}
 
-        {view === 'full' && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: '12px' }}>
-            <span style={{ fontSize: '3rem' }}>🦈</span>
-            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>MiroFish v2.0 — Modo Serverless</p>
-            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--text-muted)', maxWidth: '400px', textAlign: 'center' }}>Engine roda diretamente nas API routes (Gemini 2.0 Flash). Use o Simulador para executar predições.</p>
-          </div>
-        )}
       </div>
     </div>
   );
